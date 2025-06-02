@@ -1,4 +1,4 @@
-// Simple handler for the root route
+// Root handler to check if the API is running
 pub async fn root_handler() -> &'static str {
-    "Hello from LinkSphere Backend (Rust/Axum)!"
+    "LinkSphere API is running!"
 } 
