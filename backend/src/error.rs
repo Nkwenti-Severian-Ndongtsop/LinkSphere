@@ -1,135 +1,98 @@
-use actix_web::{HttpResponse, ResponseError};
-use derive_more::Display;
-use jsonwebtoken::errors::Error as JwtError;
+#![allow(dead_code)]
+
 use serde::Serialize;
-use sqlx::Error as SqlxError;
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use jsonwebtoken;
+use sqlx;
 
-#[derive(Debug, Display)]
-pub enum AppError {
-    #[display(fmt = "Internal Server Error")]
-    InternalServerError,
+#[derive(Debug, Serialize)]
+pub struct AppError {
+    pub message: String,
+    pub error_type: ErrorType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
+}
 
-    #[display(fmt = "Invalid Credentials")]
-    InvalidCredentials,
-
-    #[display(fmt = "Email Not Verified")]
-    EmailNotVerified,
-
-    #[display(fmt = "Invalid Token")]
-    InvalidToken,
-
-    #[display(fmt = "Token Expired")]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorType {
+    // Currently used error types
+    ValidationError,
+    DatabaseError,
+    NotFound,
+    Unauthorized,
+    ServerError,
     TokenExpired,
 
-    #[display(fmt = "Email Already Exists")]
+    // Reserved for future use
+    InvalidCredentials,
+    
+    EmailNotVerified,
+    
     EmailAlreadyExists,
-
-    #[display(fmt = "Username Already Exists")]
+    
     UsernameAlreadyExists,
-
-    #[display(fmt = "Admin Already Exists")]
+    
     AdminAlreadyExists,
-
-    #[display(fmt = "Unauthorized")]
-    Unauthorized,
-
-    #[display(fmt = "Forbidden")]
+    
     Forbidden,
-
-    #[display(fmt = "Database Error: {}", _0)]
-    DatabaseError(String),
 }
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    code: String,
-    message: String,
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let status = match self.error_type {
+            ErrorType::ValidationError => StatusCode::BAD_REQUEST,
+            ErrorType::DatabaseError => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::NotFound => StatusCode::NOT_FOUND,
+            ErrorType::Unauthorized | 
+            ErrorType::InvalidCredentials |
+            ErrorType::EmailNotVerified |
+            ErrorType::TokenExpired => StatusCode::UNAUTHORIZED,
+            ErrorType::EmailAlreadyExists |
+            ErrorType::UsernameAlreadyExists |
+            ErrorType::AdminAlreadyExists => StatusCode::BAD_REQUEST,
+            ErrorType::Forbidden => StatusCode::FORBIDDEN,
+            ErrorType::ServerError => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
+        (status, Json(self)).into_response()
+    }
 }
 
-impl ResponseError for AppError {
-    fn error_response(&self) -> HttpResponse {
-        match self {
-            AppError::InternalServerError => {
-                HttpResponse::InternalServerError().json(ErrorResponse {
-                    code: "internal_server_error".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::InvalidCredentials => {
-                HttpResponse::Unauthorized().json(ErrorResponse {
-                    code: "invalid_credentials".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::EmailNotVerified => {
-                HttpResponse::Unauthorized().json(ErrorResponse {
-                    code: "email_not_verified".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::InvalidToken => {
-                HttpResponse::Unauthorized().json(ErrorResponse {
-                    code: "invalid_token".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::TokenExpired => {
-                HttpResponse::Unauthorized().json(ErrorResponse {
-                    code: "expired_token".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::EmailAlreadyExists => {
-                HttpResponse::BadRequest().json(ErrorResponse {
-                    code: "email_in_use".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::UsernameAlreadyExists => {
-                HttpResponse::BadRequest().json(ErrorResponse {
-                    code: "username_in_use".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::AdminAlreadyExists => {
-                HttpResponse::BadRequest().json(ErrorResponse {
-                    code: "admin_exists".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::Unauthorized => {
-                HttpResponse::Unauthorized().json(ErrorResponse {
-                    code: "unauthorized".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::Forbidden => {
-                HttpResponse::Forbidden().json(ErrorResponse {
-                    code: "forbidden".into(),
-                    message: self.to_string(),
-                })
-            }
-            AppError::DatabaseError(msg) => {
-                HttpResponse::InternalServerError().json(ErrorResponse {
-                    code: "database_error".into(),
-                    message: msg.clone(),
-                })
-            }
+impl From<sqlx::Error> for AppError {
+    fn from(error: sqlx::Error) -> Self {
+        match error {
+            sqlx::Error::RowNotFound => AppError {
+                message: "Resource not found".to_string(),
+                error_type: ErrorType::NotFound,
+                details: None,
+            },
+            _ => AppError {
+                message: "Database error occurred".to_string(),
+                error_type: ErrorType::DatabaseError,
+                details: Some(error.to_string()),
+            },
         }
     }
 }
 
-impl From<SqlxError> for AppError {
-    fn from(error: SqlxError) -> Self {
-        AppError::DatabaseError(error.to_string())
-    }
-}
-
-impl From<JwtError> for AppError {
-    fn from(error: JwtError) -> Self {
+impl From<jsonwebtoken::errors::Error> for AppError {
+    fn from(error: jsonwebtoken::errors::Error) -> Self {
         match error.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => AppError::TokenExpired,
-            _ => AppError::InvalidToken,
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => AppError {
+                message: "Token has expired".to_string(),
+                error_type: ErrorType::TokenExpired,
+                details: None,
+            },
+            _ => AppError {
+                message: "Invalid token".to_string(),
+                error_type: ErrorType::Unauthorized,
+                details: Some(error.to_string()),
+            },
         }
     }
-} 
+}
