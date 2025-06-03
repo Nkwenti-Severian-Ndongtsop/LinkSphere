@@ -18,8 +18,9 @@ import {
   // Edit,
   Eye,
   X,
-  // Plus,
+  Plus,
 } from "lucide-react"
+import { Link } from "react-router-dom"
 
 // Define the ApiLink type (matching HomePage.tsx and backend response)
 interface ApiLink {
@@ -50,15 +51,19 @@ export default function AdminDashboard() {
       setLoading(true)
       setError(null)
       try {
-          const response = await fetch('http://localhost:3000/api/links')
+          const response = await fetch('/api/links', {
+              headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`
+              }
+          })
           if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`)
+              throw new Error('Failed to fetch links')
           }
           const data: ApiLink[] = await response.json()
           setLinks(data)
       } catch (e: any) {
           console.error("Error fetching links:", e)
-          setError("Failed to load links.")
+          setError(e instanceof Error ? e.message : 'An error occurred')
       } finally {
           setLoading(false)
       }
@@ -91,7 +96,7 @@ export default function AdminDashboard() {
           return
       }
       try {
-          const response = await fetch(`http://localhost:3000/api/links/${id}`, {
+          const response = await fetch(`/api/links/${id}`, {
               method: 'DELETE',
           })
 
