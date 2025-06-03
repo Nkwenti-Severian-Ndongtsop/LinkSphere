@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
@@ -618,4 +620,4 @@ pub async fn verify_email_handler(
             ))
         }
     }
-} 
+}
