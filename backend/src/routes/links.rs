@@ -17,7 +17,6 @@ pub async fn create_link_handler(
         RETURNING id, user_id, url, title, description, click_count, favicon_url, created_at, 
                  (SELECT username FROM users WHERE id = $1) as uploader_username
     "#;
-
     match sqlx::query_as::<_, Link>(query)
         .bind(payload.user_id)
         .bind(payload.url)
