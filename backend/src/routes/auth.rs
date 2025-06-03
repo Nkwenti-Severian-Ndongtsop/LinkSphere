@@ -19,11 +19,13 @@ use serde::{Deserialize, Serialize};
 use std::{env, time::{SystemTime, UNIX_EPOCH}};
 use validator::{Validate, ValidationError};
 use regex::Regex;
-
+use uuid::Uuid;
 use crate::{
-    database::state::AppState,
-    models::user::User,
+    database::state::AppState,  
+    models::user::{User, UserRole},
 };
+use chrono::{Utc, Duration};
+use crate::services::email::EmailService;
 
 // JWT configuration
 const JWT_EXPIRATION: u64 = 24 * 60 * 60;
@@ -181,18 +183,19 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, argon2::passw
 }
 
 // Response type for authentication
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct AuthResponse {
     token: String,
     user: UserResponse,
+    email_sent: bool,
 }
 
 #[derive(Debug, Serialize)]
 pub struct UserResponse {
-    id: i32,
+    id: Uuid,
     username: String,
     email: String,
-    is_admin: bool,
+    user_role: UserRole,
 }
 
 impl From<User> for UserResponse {
@@ -201,7 +204,7 @@ impl From<User> for UserResponse {
             id: user.id,
             username: user.username,
             email: user.email,
-            is_admin: user.is_admin,
+            user_role: user.user_role,
         }
     }
 }
@@ -240,6 +243,12 @@ pub struct LoginRequest {
         )
     )]
     password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OtpVerificationRequest {
+    pub email: String,
+    pub otp_code: String,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -328,7 +337,7 @@ pub async fn login_handler(
     }
 
     // Find user by email
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
+    let user = sqlx::query_as::<_, User>("SELECT id, email, username, password_hash FROM users WHERE email = $1")
         .bind(&payload.email)
         .fetch_optional(&state.pool)
         .await
@@ -395,6 +404,7 @@ pub async fn login_handler(
     Ok(Json(AuthResponse {
         token,
         user: user.into(),
+        email_sent: true,
     }))
 }
 
@@ -456,16 +466,23 @@ pub async fn register_handler(
         )
     })?;
 
-    // Create user
+    // Generate OTP
+    let otp = EmailService::generate_otp();
+    let now = Utc::now();
+    let otp_expires = now + Duration::minutes(10);
+
+    // Create user with OTP
     let user = sqlx::query_as::<_, User>(
-        "INSERT INTO users (username, email, password_hash, is_admin, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+        "INSERT INTO users (username, email, password_hash, user_role, otp_code, otp_expires_at, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
          RETURNING *",
     )
     .bind(&payload.username)
     .bind(&payload.email)
     .bind(&password_hash)
-    .bind(false) // New users are not admins by default
+    .bind(UserRole::User)
+    .bind(&otp)
+    .bind(otp_expires)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| {
@@ -479,6 +496,15 @@ pub async fn register_handler(
         )
     })?;
 
+    // Try to send OTP email
+    let email_sent = match EmailService::new().and_then(|email_service| email_service.send_otp(&payload.email, &otp)) {
+        Ok(_) => true,
+        Err(e) => {
+            eprintln!("Failed to send OTP email: {}", e);
+            false
+        }
+    };
+
     // Generate JWT token
     let token = generate_token(&user.id.to_string()).map_err(|e| {
         (
@@ -491,9 +517,11 @@ pub async fn register_handler(
         )
     })?;
 
+    // Return success response with email status
     Ok(Json(AuthResponse {
         token,
         user: user.into(),
+        email_sent,
     }))
 }
 
@@ -502,4 +530,92 @@ pub async fn logout_handler(
 ) -> Result<(), (StatusCode, Json<AuthError>)> {
     cookies.add(create_logout_cookie());
     Ok(())
+}
+
+pub async fn verify_email_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<OtpVerificationRequest>,
+) -> Result<Json<AuthResponse>, (StatusCode, Json<AuthError>)> {
+    // Find user by email
+    let mut user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
+        .bind(&payload.email)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AuthError {
+                    message: "Database error".to_string(),
+                    error_type: AuthErrorType::ServerError,
+                    details: Some(e.to_string()),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(AuthError {
+                    message: "User not found".to_string(),
+                    error_type: AuthErrorType::ValidationError,
+                    details: None,
+                }),
+            )
+        })?;
+
+    // Check if OTP matches and is not expired
+    let now = Utc::now();
+    match (&user.otp_code, &user.otp_expires_at) {
+        (Some(stored_otp), Some(expires_at)) if stored_otp == &payload.otp_code && &now < expires_at => {
+            // OTP is valid, update user verification status
+            sqlx::query!(
+                "UPDATE users SET is_email_verified = true, otp_code = NULL, otp_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+                user.id
+            )
+            .execute(&state.pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(AuthError {
+                        message: "Failed to update user verification status".to_string(),
+                        error_type: AuthErrorType::ServerError,
+                        details: Some(e.to_string()),
+                    }),
+                )
+            })?;
+
+            // Update local user object
+            user.is_email_verified = true;
+            user.otp_code = None;
+            user.otp_expires_at = None;
+
+            // Generate new JWT token
+            let token = generate_token(&user.id.to_string()).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(AuthError {
+                        message: "Token generation error".to_string(),
+                        error_type: AuthErrorType::ServerError,
+                        details: Some(e.to_string()),
+                    }),
+                )
+            })?;
+
+            Ok(Json(AuthResponse {
+                token,
+                user: user.into(),
+                email_sent: true,
+            }))
+        },
+        _ => {
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(AuthError {
+                    message: "Invalid or expired OTP".to_string(),
+                    error_type: AuthErrorType::ValidationError,
+                    details: None,
+                }),
+            ))
+        }
+    }
 } 
