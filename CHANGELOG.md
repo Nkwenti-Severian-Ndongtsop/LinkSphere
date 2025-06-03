@@ -2,39 +2,148 @@
 
 All notable changes to the LinkSphere project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [2.0.4] - Current Version
+## [Unreleased]
 
 ### Added
-- Dark/Light mode toggle with system preference detection
-- Responsive navigation with mobile support
-- Link upload functionality
-- Link management dashboard
-- Admin interface with authentication
-- PostgreSQL database integration
-- RESTful API endpoints for link management
-- CORS configuration for frontend-backend communication
+- Initial project setup with Rust backend and React TypeScript frontend
+- Complete database schema implementation
+  - Users table with authentication fields
+  - Links table for bookmark storage
+  - Categories and Tags for organization
+  - Junction tables for many-to-many relationships
+  - Automatic timestamp management
+
+#### Backend Features
+- User authentication system
+  - JWT-based authentication
+  - Password hashing with Argon2
+  - Email verification system
+  - Password reset functionality
+- Rate limiting middleware
+- CORS configuration for frontend integration
+- RESTful API endpoints:
+  - `/api/auth/login`
+  - `/api/auth/register`
+  - `/api/auth/logout`
+  - `/api/users`
+  - `/api/links` (GET, POST)
+  - `/api/links/:id` (DELETE)
+  - `/api/links/:id/click`
 - Database migrations system
-- Environment variable configuration
+- Protected routes middleware
+- Error handling system
 
-### Changed
-- Migrated to TypeScript for better type safety
-- Updated to React Router v6 for improved routing
-- Implemented Tailwind CSS for styling
-- Added Framer Motion for animations
+#### Frontend Features
+- React application with TypeScript
+- Routing system with protected routes
+- Authentication flow
+- Theme provider for dark/light mode
+- Components:
+  - Layout component
+  - HomePage
+  - UploadForm
+  - AdminDashboard
+  - Login/Signup pages
+- Animation support with Framer Motion
+- Vite build configuration
+- TypeScript configuration
+- Path aliases for cleaner imports
 
-### Security
-- Added JWT and Session token support
-- Environment variable protection
-- Database connection security
+### Database Schema
+- Users
+  ```sql
+  - id (UUID)
+  - username
+  - email
+  - password_hash
+  - user_role (enum: user, admin)
+  - is_email_verified
+  - verification_token
+  - verification_token_expires_at
+  - reset_token
+  - reset_token_expires_at
+  - created_at
+  - updated_at
+  ```
+- Links
+  ```sql
+  - id (SERIAL)
+  - user_id (UUID)
+  - url
+  - title
+  - description
+  - click_count
+  - favicon_url
+  - created_at
+  - updated_at
+  ```
+- Categories
+  ```sql
+  - id (SERIAL)
+  - name
+  - description
+  - user_id (UUID)
+  - created_at
+  - updated_at
+  ```
+- Tags
+  ```sql
+  - id (SERIAL)
+  - name
+  - user_id (UUID)
+  - created_at
+  - updated_at
+  ```
 
-## [Initial Release]
+### Technical Details
+- Backend:
+  - Rust with Axum web framework
+  - PostgreSQL database with SQLx
+  - JWT authentication
+  - Argon2 password hashing
+  - Async/await support
+  - Error handling with custom types
+  - Database connection pooling
 
-### Added
+- Frontend:
+  - React 18 with TypeScript
+  - Vite build tool
+  - React Router v6
+  - Framer Motion for animations
+  - Context API for state management
+  - Protected route system
+  - Proxy configuration for API requests
+
+### Development Setup
+- Environment configuration
+- Database migration system
+- Development server configuration
+- TypeScript strict mode
+- Path aliases
+- Build optimization settings
+
+### Security Features
+- JWT-based authentication
+- Password hashing with Argon2
+- Rate limiting
+- CORS protection
+- Protected routes
+- Secure password reset flow
+- Email verification system
+
+### Next Steps
+- Implement social features
+- Add WebSocket support for real-time updates
+- Enhance error handling
+- Add comprehensive testing
+- Implement caching system
+- Add analytics dashboard
+- Implement search functionality
+- Add tag and category management UI
+
+## [0.1.0] - Initial Release
 - Basic project structure
-- Frontend setup with Vite
-- Backend setup with Rust and Axum
-- Basic routing system
-- Database connection setup 
+- Core features implementation
+- Database schema setup
+- Authentication system
+- Frontend setup with React 
