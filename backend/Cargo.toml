@@ -7,7 +7,7 @@ edition = "2021"
 tokio = { version = "1", features = ["full"] } # Async runtime
 axum = { version = "0.7", features = ["macros"] } # Web framework
 axum-extra = { version = "0.9", features = ["typed-header", "cookie"] } # Additional axum features including headers and cookies
-sqlx = { version = "0.7", features = [ "runtime-tokio", "postgres", "chrono", "tls-native-tls" ] } # Database toolkit with TLS support
+sqlx = { version = "0.7", features = [ "runtime-tokio", "postgres", "chrono", "tls-native-tls", "uuid" ] } # Database toolkit with TLS support
 dotenvy = "0.15" # For loading .env files
 serde = { version = "1.0", features = ["derive"] } # For JSON serialization/deserialization
 chrono = { version = "0.4", features = ["serde"] } # For timestamp handling
@@ -22,3 +22,4 @@ headers = "0.4" # For HTTP headers
 validator = { version = "0.16", features = ["derive"] } # For input validation
 regex = "1.10" # For regex validation
 lazy_static = "1.4" # For static regex compilation
+uuid = { version = "1.6", features = ["v4", "serde"] } # For UUID generation
