@@ -134,46 +134,46 @@ const HomePage: React.FC = () => {
             </motion.div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <motion.div
+            <motion.div
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.2 }}
                     className="p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-xl"
-                >
+            >
                     <h2 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">
                         Share Links
-                    </h2>
+                </h2>
                     <p className="text-gray-600 dark:text-gray-400 mb-4">
                         Upload and share your favorite links with the community.
-                    </p>
-                    <Link
-                        to="/upload"
+                        </p>
+                        <Link
+                            to="/upload"
                         className="inline-block bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-                    >
+                        >
                         Start Sharing
-                    </Link>
-                </motion.div>
+                        </Link>
+                    </motion.div>
 
-                <motion.div
+                            <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.4 }}
                     className="p-6 rounded-2xl bg-white dark:bg-gray-800 shadow-xl"
-                >
+                            >
                     <h2 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">
                         Manage Links
                     </h2>
                     <p className="text-gray-600 dark:text-gray-400 mb-4">
                         Access your dashboard to manage all your shared links.
-                    </p>
+                                        </p>
                     <Link
                         to="/admin"
                         className="inline-block bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
                     >
                         Go to Dashboard
                     </Link>
-                </motion.div>
-            </div>
+                            </motion.div>
+                    </div>
         </div>
     )
 }
