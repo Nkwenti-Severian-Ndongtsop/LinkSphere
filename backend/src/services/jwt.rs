@@ -2,13 +2,14 @@ use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation,
 use serde::{Serialize, Deserialize};
 use std::env;
 use chrono::{Utc, Duration};
+use crate::models::user::UserRole;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: i32,  // user_id
     pub username: String,
     pub email: String,
-    pub is_admin: bool,
+    pub user_role: UserRole,
     pub exp: i64,  // expiration time
     pub iat: i64,  // issued at
 }
@@ -27,7 +28,7 @@ impl JwtService {
         })
     }
 
-    pub fn generate_token(&self, user_id: i32, username: &str, email: &str, is_admin: bool) -> Result<String, JwtError> {
+    pub fn generate_token(&self, user_id: i32, username: &str, email: &str, user_role: UserRole) -> Result<String, JwtError> {
         let now = Utc::now();
         let expires_at = now + Duration::hours(24); // Token expires in 24 hours
 
@@ -35,7 +36,7 @@ impl JwtService {
             sub: user_id,
             username: username.to_string(),
             email: email.to_string(),
-            is_admin,
+            user_role,
             exp: expires_at.timestamp(),
             iat: now.timestamp(),
         };
