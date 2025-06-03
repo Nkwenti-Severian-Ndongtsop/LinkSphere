@@ -2,46 +2,90 @@
 
 import { useState, useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
-import { ThemeProvider } from "./contexts/ThemeContext"
+import { ThemeProvider } from "./components/ThemeProvider"
+import { AnimatePresence } from "framer-motion"
 import Layout from "./components/Layout"
 import HomePage from "./components/HomePage"
-import UploadForm from "./components/UploadForm"
 import AdminDashboard from "./components/AdminDashboard"
-import { AnimatePresence } from "framer-motion"
+import UploadForm from "./components/UploadForm"
+import Login from "./pages/auth/Login"
+import Signup from "./pages/auth/Signup"
+
+interface PrivateRouteProps {
+  children: React.ReactNode;
+  isAuthenticated: boolean;
+}
+
+const PrivateRoute = ({ children, isAuthenticated }: PrivateRouteProps) => {
+  if (!isAuthenticated) {
+    return <Navigate to="/auth/login" replace />;
+  }
+  return <>{children}</>;
+};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  // Simulate authentication check
   useEffect(() => {
     const checkAuth = () => {
-      const auth = localStorage.getItem("isAuthenticated")
-      setIsAuthenticated(auth === "true")
+      const token = localStorage.getItem("token")
+      setIsAuthenticated(!!token)
     }
 
     checkAuth()
-
-    // For demo purposes only - in a real app, use proper authentication
     window.addEventListener("storage", checkAuth)
     return () => window.removeEventListener("storage", checkAuth)
   }, [])
 
-  // For demo purposes - toggle authentication
-  const toggleAuth = () => {
-    const newState = !isAuthenticated
-    localStorage.setItem("isAuthenticated", String(newState))
-    setIsAuthenticated(newState)
+  const handleLogin = () => {
+    setIsAuthenticated(true)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    setIsAuthenticated(false)
   }
 
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AnimatePresence mode="wait">
-          <Layout toggleAuth={toggleAuth} isAuthenticated={isAuthenticated}>
+          <Layout isAuthenticated={isAuthenticated} onLogout={handleLogout}>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/upload" element={<UploadForm />} />
-              <Route path="/admin" element={isAuthenticated ? <AdminDashboard /> : <Navigate to="/" />} />
+              <Route 
+                path="/admin" 
+                element={
+                  <PrivateRoute isAuthenticated={isAuthenticated}>
+                    <AdminDashboard />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/upload" 
+                element={
+                  <PrivateRoute isAuthenticated={isAuthenticated}>
+                    <UploadForm />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/auth/login" 
+                element={
+                  isAuthenticated ? 
+                    <Navigate to="/admin" replace /> : 
+                    <Login onLoginSuccess={handleLogin} />
+                } 
+              />
+              <Route 
+                path="/auth/signup" 
+                element={
+                  isAuthenticated ? 
+                    <Navigate to="/admin" replace /> : 
+                    <Signup />
+                } 
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>
         </AnimatePresence>
