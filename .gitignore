@@ -4,6 +4,13 @@ target
 # Environment variables
 .env
 
+# Dependencies and lock files
+node_modules
+package-lock.json
+Cargo.lock
+*-lock.json
+*.lock
+
 # Logs
 logs
 *.log
@@ -13,7 +20,6 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
 dist
 dist-ssr
 *.local
@@ -29,7 +35,5 @@ dist-ssr
 *.sln
 *.sw?
 *.zip
-*-lock.json
-*.lock
 *.sql
 env*
