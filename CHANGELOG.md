@@ -147,3 +147,44 @@ All notable changes to the LinkSphere project will be documented in this file.
 - Database schema setup
 - Authentication system
 - Frontend setup with React 
+
+## [0.2.0] - Admin System and Enhanced Logging
+
+### Added
+- Comprehensive logging system
+  - Console and file-based logging with tracing and tracing-subscriber
+  - Markdown formatted logs with timestamps and levels
+  - Request/response logging with status codes and latency
+  - Custom log formatting with emoji indicators
+  - Log file output to `linksphere_logs.md`
+
+- Complete admin system implementation
+  - Default admin account creation on startup
+  - Admin-only routes and endpoints:
+    - `/api/admin/users` - Get all users with statistics
+    - `/api/admin/links` - Get all links across users
+    - `/api/admin/users/:id` - Delete user endpoint
+    - `/api/admin/links/:id` - Delete any link endpoint
+  - Role-based access control (RBAC)
+  - Protected admin routes with proper authorization
+  - User statistics and platform metrics
+  - Admin dashboard features
+
+### Fixed
+- Registration endpoint rate limiting configuration
+- Login verification error with SQL query optimization
+  - Modified query to select all user fields
+  - Resolved "Unexpected token" JSON parsing error
+
+### Security
+- Enhanced admin route protection
+- Admin account protection from deletion
+- Role-based middleware improvements
+- Rate limiting refinements
+
+### Technical Improvements
+- Structured logging implementation
+- Database query optimizations
+- Error handling enhancements
+- Admin statistics aggregation
+- User metrics tracking 
