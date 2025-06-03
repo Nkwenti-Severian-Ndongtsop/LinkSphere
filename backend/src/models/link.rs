@@ -1,9 +1,10 @@
+#![allow(dead_code)]
+
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
-/// Represents a link in the system
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Link {
     pub id: Uuid,
@@ -11,18 +12,20 @@ pub struct Link {
     pub url: String,
     pub title: String,
     pub description: String,
+    pub uploader_name: String,
+    pub click_count: i32,
     pub favicon_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-/// Request payload for creating a new link
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateLinkRequest {
     pub user_id: Uuid,
     pub url: String,
     pub title: String,
-    pub description: Option<String>,
+    pub description: String,
+    pub uploader_name: String,
     pub favicon_url: Option<String>,
 }
 
@@ -31,14 +34,15 @@ impl Link {
         sqlx::query_as!(
             Self,
             r#"
-            INSERT INTO links (user_id, url, title, description, favicon_url, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO links (user_id, url, title, description, uploader_name, click_count, favicon_url, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 0, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING *
             "#,
             user_id,
             req.url,
             req.title,
             req.description,
+            req.uploader_name,
             req.favicon_url
         )
         .fetch_one(pool)
