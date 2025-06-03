@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, errors::Error as JwtError};
 use serde::{Serialize, Deserialize};
 use std::env;
