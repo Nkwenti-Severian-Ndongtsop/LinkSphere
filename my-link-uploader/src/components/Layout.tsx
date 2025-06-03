@@ -1,20 +1,30 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "../hooks/useTheme"
 import { motion } from "framer-motion"
 import { Sun, Moon, LinkIcon, Upload, LayoutDashboard, LogOut, LogIn } from "lucide-react"
 
 interface LayoutProps {
   children: ReactNode
-  toggleAuth: () => void
   isAuthenticated: boolean
+  onLogout: () => void
 }
 
-export default function Layout({ children, toggleAuth, isAuthenticated }: LayoutProps) {
+export default function Layout({ children, isAuthenticated, onLogout }: LayoutProps) {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
+  const navigate = useNavigate()
+
+  const handleAuthAction = () => {
+    if (isAuthenticated) {
+      onLogout()
+      navigate('/')
+    } else {
+      navigate('/auth/login')
+    }
+  }
 
   return (
     <div
@@ -27,7 +37,7 @@ export default function Layout({ children, toggleAuth, isAuthenticated }: Layout
       <header className="sticky top-0 z-50 backdrop-blur-md bg-opacity-70 border-b border-purple-500/20 dark:border-purple-500/10">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 group">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-all duration-300 group-hover:scale-105">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-all duration-300 group-hover:scale-105">
               <LinkIcon size={20} className="text-white" />
             </div>
             <div>
@@ -42,13 +52,15 @@ export default function Layout({ children, toggleAuth, isAuthenticated }: Layout
             <NavLink to="/" current={location.pathname === "/"}>
               Home
             </NavLink>
-            <NavLink to="/upload" current={location.pathname === "/upload"}>
-              Upload
-            </NavLink>
             {isAuthenticated && (
-              <NavLink to="/admin" current={location.pathname === "/admin"}>
-                Dashboard
-              </NavLink>
+              <>
+                <NavLink to="/upload" current={location.pathname === "/upload"}>
+                  Upload
+                </NavLink>
+                <NavLink to="/admin" current={location.pathname === "/admin"}>
+                  Dashboard
+                </NavLink>
+              </>
             )}
           </nav>
 
@@ -66,7 +78,7 @@ export default function Layout({ children, toggleAuth, isAuthenticated }: Layout
             </button>
 
             <button
-              onClick={toggleAuth}
+              onClick={handleAuthAction}
               className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-all duration-300 ${
                 isAuthenticated
                   ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
@@ -109,8 +121,12 @@ export default function Layout({ children, toggleAuth, isAuthenticated }: Layout
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-purple-500/20 z-50">
         <div className="flex justify-around py-3">
           <MobileNavLink to="/" icon={<LinkIcon size={20} />} label="Home" />
-          <MobileNavLink to="/upload" icon={<Upload size={20} />} label="Upload" />
-          {isAuthenticated && <MobileNavLink to="/admin" icon={<LayoutDashboard size={20} />} label="Admin" />}
+          {isAuthenticated && (
+            <>
+              <MobileNavLink to="/upload" icon={<Upload size={20} />} label="Upload" />
+              <MobileNavLink to="/admin" icon={<LayoutDashboard size={20} />} label="Admin" />
+            </>
+          )}
         </div>
       </div>
     </div>
