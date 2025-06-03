@@ -32,3 +32,4 @@ dist-ssr
 *-lock.json
 *.lock
 *.sql
+env*
