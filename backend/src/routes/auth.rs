@@ -79,6 +79,7 @@ impl IntoResponse for AuthError {
 // Authentication extractor for protected routes
 pub struct AuthUser {
     pub user_id: String,
+    pub is_admin: bool,
 }
 
 #[async_trait]
@@ -88,9 +89,9 @@ where
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // First try to extract the token from the Authorization header
-        let auth_header = TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, _state)
+        let auth_header = TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, state)
             .await
             .map(|header| header.token().to_string());
 
@@ -122,8 +123,35 @@ where
                 details: None,
             })?;
 
+        // Get the user's role from the database
+        let state = parts.extensions.get::<AppState>().ok_or_else(|| AuthError {
+            message: "Internal server error".to_string(),
+            error_type: AuthErrorType::ServerError,
+            details: None,
+        })?;
+
+        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+            .bind(Uuid::parse_str(&claims.sub).map_err(|_| AuthError {
+                message: "Invalid user ID".to_string(),
+                error_type: AuthErrorType::InvalidToken,
+                details: None,
+            })?)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|_| AuthError {
+                message: "Database error".to_string(),
+                error_type: AuthErrorType::ServerError,
+                details: None,
+            })?
+            .ok_or_else(|| AuthError {
+                message: "User not found".to_string(),
+                error_type: AuthErrorType::InvalidToken,
+                details: None,
+            })?;
+
         Ok(AuthUser {
             user_id: claims.sub,
+            is_admin: user.user_role == UserRole::Admin,
         })
     }
 }
@@ -339,7 +367,7 @@ pub async fn login_handler(
     }
 
     // Find user by email
-    let user = sqlx::query_as::<_, User>("SELECT id, email, username, password_hash FROM users WHERE email = $1")
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
         .bind(&payload.email)
         .fetch_optional(&state.pool)
         .await
