@@ -11,7 +11,7 @@ sqlx = { version = "0.7", features = [ "runtime-tokio", "postgres", "chrono", "t
 dotenvy = "0.15" # For loading .env files
 serde = { version = "1.0", features = ["derive"] } # For JSON serialization/deserialization
 chrono = { version = "0.4", features = ["serde"] } # For timestamp handling
-tower-http = { version = "0.5.0", features = ["cors"] }
+tower-http = { version = "0.5.0", features = ["cors", "trace"] }
 tower-cookies = "0.10" # For cookie handling
 jsonwebtoken = "9.2" # For JWT handling
 lettre = { version = "0.11", features = ["smtp-transport", "tokio1-native-tls"] } # For email sending
@@ -23,3 +23,7 @@ validator = { version = "0.16", features = ["derive"] } # For input validation
 regex = "1.10" # For regex validation
 lazy_static = "1.4" # For static regex compilation
 uuid = { version = "1.6", features = ["v4", "serde"] } # For UUID generation
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
