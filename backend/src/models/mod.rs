@@ -1,3 +1,4 @@
-pub mod link;
 pub mod user;
-pub mod auth; 
+pub mod link;
+pub mod tag;
+pub mod category;
