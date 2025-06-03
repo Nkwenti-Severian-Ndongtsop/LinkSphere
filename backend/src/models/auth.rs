@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc, Duration};
+use crate::models::user::UserRole;
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -13,7 +14,7 @@ pub struct LoginResponse {
     pub user_id: i32,
     pub username: String,
     pub email: String,
-    pub is_admin: bool,
+    pub user_role: UserRole,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub otp_required: Option<bool>,
 }
