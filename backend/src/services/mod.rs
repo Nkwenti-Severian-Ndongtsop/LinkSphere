@@ -3,4 +3,4 @@ pub mod jwt;
 pub mod password;
 
 // Re-export only what's needed
-pub use jwt::JwtService; 
+pub use jwt::JwtService;
