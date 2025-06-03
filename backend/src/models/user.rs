@@ -1,6 +1,7 @@
+#![allow(dead_code)]
+
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
-use sqlx::FromRow;
 use sqlx::PgPool;
 use uuid::Uuid;
 use argon2::{
@@ -60,13 +61,16 @@ impl User {
             INSERT INTO users (
                 username, email, password_hash, user_role, 
                 verification_token, verification_token_expires_at,
+                otp_code, otp_expires_at,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, 'user', $4, $5, $6, $6)
+            VALUES ($1, $2, $3, 'user', $4, $5, NULL, NULL, $6, $6)
             RETURNING 
                 id, username, email, password_hash,
                 user_role as "user_role: UserRole",
                 is_email_verified,
+                otp_code,
+                otp_expires_at,
                 verification_token,
                 verification_token_expires_at,
                 reset_token,
@@ -95,6 +99,8 @@ impl User {
                 id, username, email, password_hash,
                 user_role as "user_role: UserRole",
                 is_email_verified,
+                otp_code,
+                otp_expires_at,
                 verification_token,
                 verification_token_expires_at,
                 reset_token,
