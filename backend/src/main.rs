@@ -4,6 +4,7 @@ mod models;
 mod routes;
 mod services;
 mod middleware;
+mod error;
 
 use axum::{
     http::Method,
@@ -27,7 +28,7 @@ use routes::{
     increment_click_count_handler,
     create_link_handler,
     create_user_handler,
-    auth::{login_handler, register_handler, logout_handler},
+    auth::{login_handler, register_handler, logout_handler, verify_email_handler},
 };
 use middleware::{
     auth::auth_middleware,
@@ -79,24 +80,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
 
-    // Build the router
+    // Build the router with public routes
     let app = Router::new()
         .route("/", get(root_handler))
         .route("/api/auth/login", post(login_handler))
         .route("/api/auth/register", post(register_handler))
+        .route("/api/auth/verify-email", post(verify_email_handler))
         .route("/api/auth/logout", post(logout_handler))
         .route("/api/users", post(create_user_handler))
-        .route("/api/links", get(get_links_handler))
-        .route("/api/links", post(create_link_handler))
-        .route("/api/links/:id", delete(delete_link_handler))
-        .route("/api/links/:id/click", post(increment_click_count_handler))
         .layer(cors)
         .layer(from_fn_with_state(rate_limiter, rate_limit_middleware))
         .with_state(app_state.clone());
 
     // Protected routes with middleware
     let protected_routes = Router::new()
-        // Add your protected routes here
+        .route("/api/links", get(get_links_handler))
+        .route("/api/links", post(create_link_handler))
+        .route("/api/links/:id", delete(delete_link_handler))
+        .route("/api/links/:id/click", post(increment_click_count_handler))
         .layer(from_fn_with_state(app_state.clone(), auth_middleware))
         .with_state(app_state);
 
