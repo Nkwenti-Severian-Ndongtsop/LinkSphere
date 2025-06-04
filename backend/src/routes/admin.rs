@@ -190,9 +190,11 @@ pub async fn get_all_links_handler(
             l.created_at,
             l.updated_at,
             u.username as user_username,
-            u.email as user_email
+            u.email as user_email,
+            u.id as user_id
         FROM links l
         JOIN users u ON l.user_id = u.id
+        ORDER BY l.created_at DESC
         "#
     )
     .fetch_all(&state.pool)
@@ -218,8 +220,9 @@ pub struct LinkWithUser {
     pub url: String,
     pub description: Option<String>,
     pub click_count: i32,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub user_username: String,
     pub user_email: String,
+    pub user_id: Uuid,
 } 
