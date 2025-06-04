@@ -13,12 +13,14 @@ use axum::{
     Router,
     middleware::{from_fn_with_state},
 };
+use sqlx::PgPool;
 use std::net::SocketAddr;
 use dotenvy::dotenv;
 use std::sync::Arc;
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::{Any, CorsLayer};
+use tower_cookies::CookieManagerLayer;
 use std::env;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 
 // Import necessary items from modules
 use database::state::{PoolState, AppState};
@@ -57,7 +59,7 @@ async fn create_default_admin(pool: &PgPool) -> Result<(), Box<dyn std::error::E
 
     if !admin_exists {
         info!("Creating default admin account...");
-        let password_hash = auth::hash_password(&admin_password)?;
+        let password_hash = routes::auth::hash_password(&admin_password).unwrap();
 
         sqlx::query!(
             r#"
@@ -97,23 +99,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create database pool using db module
     let pool = match create_pool().await {
-        Ok(pool) => {
-            info!("✅ Successfully connected to database!");
-            pool
-        }
-        Err(err) => {
-            error!("🔥 Failed to connect to the database: {:?}", err);
+        Ok(pool) => pool,
+        Err(e) => {
+            error!("Failed to create database pool: {}", e);
             std::process::exit(1);
         }
     };
 
-    // Run migrations using db module
-    info!("🔄 Running database migrations...");
-    if let Err(err) = run_migrations(&pool).await {
-        error!("🔥 Migration error: {:?}", err);
+    // Run database migrations
+    if let Err(e) = run_migrations(&pool).await {
+        error!("Failed to run database migrations: {}", e);
         std::process::exit(1);
     }
-    info!("✅ Database migrations completed successfully!");
+
+    // Create rate limiter
+    let rate_limiter = Arc::new(RateLimiter::new(10, 60));
+
+    // Create app state
+    let app_state: AppState = Arc::new(PoolState { pool: pool.clone() });
+
+    // Create default admin account
+    if let Err(e) = create_default_admin(&pool).await {
+        error!("Failed to create admin account: {}", e);
+        std::process::exit(1);
+    }
 
     // Start the cleanup service
     info!("🧹 Starting cleanup service...");
@@ -121,33 +130,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     cleanup_service.start_cleanup_task().await;
     info!("✅ Cleanup service started successfully!");
 
-    // Create AppState
-    let app_state: AppState = Arc::new(PoolState { pool });
-
-    // Initialize rate limiter
-    let max_attempts = std::env::var("RATE_LIMIT_MAX_ATTEMPTS")
-        .unwrap_or_else(|_| "5".to_string())
-        .parse()
-        .unwrap_or(5);
-    let window_secs = std::env::var("RATE_LIMIT_WINDOW_SECS")
-        .unwrap_or_else(|_| "300".to_string())
-        .parse()
-        .unwrap_or(300);
-    let rate_limiter = RateLimiter::new(max_attempts, window_secs);
-    info!("⚡ Rate limiter configured: {} attempts per {} seconds", max_attempts, window_secs);
-
     // Define CORS layer
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
     info!("🔒 CORS configuration applied");
-
-    // Create default admin account
-    if let Err(e) = create_default_admin(&pool).await {
-        error!("Failed to create admin account: {}", e);
-        std::process::exit(1);
-    }
 
     // Build the router with public routes
     info!("🛠️ Configuring routes...");
@@ -159,8 +147,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/auth/logout", post(logout_handler))
         .route("/api/users", post(create_user_handler))
         .layer(cors)
-        .layer(logging::create_trace_layer())
+        .layer(CookieManagerLayer::new())
         .layer(from_fn_with_state(rate_limiter, rate_limit_middleware))
+        .layer(logging::create_trace_layer())
         .with_state(app_state.clone());
 
     // Protected user routes
@@ -188,35 +177,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("✅ Routes configured successfully!");
 
     // Get port from environment variable or use 3000 as default
-    let port = env::var("PORT")
-        .unwrap_or_else(|_| "3000".to_string())
-        .parse::<u16>()
-        .expect("PORT must be a number");
+    let port = match env::var("PORT") {
+        Ok(port_str) => match port_str.parse::<u16>() {
+            Ok(port_num) => {
+                info!("Using configured port: {}", port_num);
+                port_num
+            },
+            Err(e) => {
+                error!("Invalid PORT value '{}': {}. Using default port 3000", port_str, e);
+                3000
+            }
+        },
+        Err(e) => {
+            info!("PORT not set ({}). Using default port 3000", e);
+            3000
+        }
+    };
 
     // Get host from environment variable or use 0.0.0.0 as default
-    let host = env::var("HOST")
-        .unwrap_or_else(|_| "0.0.0.0".to_string())
-        .parse::<std::net::IpAddr>()
-        .expect("HOST must be a valid IP address");
+    let host = match env::var("HOST") {
+        Ok(host_str) => match host_str.parse::<std::net::IpAddr>() {
+            Ok(host_addr) => {
+                info!("Using configured host: {}", host_addr);
+                host_addr
+            },
+            Err(e) => {
+                error!("Invalid HOST value '{}': {}. Using default host 0.0.0.0", host_str, e);
+                std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))
+            }
+        },
+        Err(e) => {
+            info!("HOST not set ({}). Using default host 0.0.0.0", e);
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))
+        }
+    };
 
     // Server startup logic
     let addr = SocketAddr::from((host, port));
     info!("🚀 Server starting on {}", addr);
 
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            error!("🔥 Failed to bind server address: {:?}", err);
-            std::process::exit(1);
-        }
-    };
-
     info!("✨ Server is ready to accept connections");
-    if let Err(err) = axum::serve(listener, app.into_make_service()).await {
-        error!("🔥 Server error: {:?}", err);
+    match axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await 
+    {
+        Ok(_) => {
+            info!("👋 Server shutdown gracefully");
+            Ok(())
+        },
+        Err(err) => {
+            error!("🔥 Server failed to start: {}", err);
+            Err(err.into())
+        }
     }
-
-    Ok(())
 }
-
-// --- Handlers and Structs moved to respective modules ---
