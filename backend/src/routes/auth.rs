@@ -7,14 +7,11 @@ use argon2::{
 use axum::{
     async_trait,
     extract::{FromRequestParts, State},
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, StatusCode, header},
     response::{IntoResponse, Response},
     Json,
 };
-use axum_extra::{
-    extract::TypedHeader,
-    headers::{authorization::Bearer, Authorization},
-};
+use headers::{authorization::Bearer, Authorization, HeaderMapExt};
 use tower_cookies::{Cookie, cookie::{CookieJar, SameSite}, Cookies};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -28,6 +25,7 @@ use crate::{
 };
 use chrono::{Utc, Duration};
 use crate::services::email::EmailService;
+use tracing::{error};
 
 // JWT configuration
 const JWT_EXPIRATION: u64 = 24 * 60 * 60;
@@ -89,15 +87,22 @@ where
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // First try to extract the token from the Authorization header
-        let auth_header = TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, state)
-            .await
-            .map(|header| header.token().to_string());
+        let auth_token = parts.headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| {
+                if value.starts_with("Bearer ") {
+                    Some(value[7..].to_string())
+                } else {
+                    None
+                }
+            });
 
-        let token = match auth_header {
-            Ok(token) => token,
-            Err(_) => {
+        let token = match auth_token {
+            Some(token) => token,
+            None => {
                 // If no Authorization header, try to get the token from cookies
                 let cookie_jar = parts.extensions.get::<CookieJar>().ok_or_else(|| AuthError {
                     message: "No authentication token found in header or cookies".to_string(),
@@ -432,7 +437,7 @@ pub async fn login_handler(
     cookies.add(create_auth_cookie(&token));
 
     Ok(Json(AuthResponse {
-        token,
+        token: token.to_string(),
         user: user.into(),
         email_sent: true,
     }))
@@ -442,7 +447,7 @@ pub async fn register_handler(
     State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<Json<AuthResponse>, (StatusCode, Json<AuthError>)> {
-    // Validate input
+    // Validate payload
     if let Err(validation_errors) = payload.validate() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -527,10 +532,18 @@ pub async fn register_handler(
     })?;
 
     // Try to send OTP email
-    let email_sent = match EmailService::new().and_then(|email_service| email_service.send_otp(&payload.email, &otp)) {
-        Ok(_) => true,
+    let email_sent = match EmailService::new() {
+        Ok(email_service) => {
+            match email_service.send_otp(&payload.email, &otp) {
+                Ok(_) => true,
+                Err(e) => {
+                    error!("Failed to send OTP email: {}", e);
+                    false
+                }
+            }
+        }
         Err(e) => {
-            eprintln!("Failed to send OTP email: {}", e);
+            error!("Failed to initialize email service: {}", e);
             false
         }
     };
