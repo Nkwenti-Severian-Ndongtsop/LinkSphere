@@ -51,7 +51,7 @@ export default function AdminDashboard() {
       setLoading(true)
       setError(null)
       try {
-          const response = await fetch('/api/links', {
+          const response = await fetch('/api/admin/links', {
               headers: {
                   'Authorization': `Bearer ${localStorage.getItem('token')}`
               }
@@ -127,6 +127,27 @@ export default function AdminDashboard() {
   const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } }
   const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } }
 
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      } else {
+        throw new Error('Logout failed');
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
   return (
     <div className="flex h-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-xl overflow-hidden border border-purple-100 dark:border-purple-900/30 shadow-xl">
       {/* Sidebar */}
@@ -197,8 +218,11 @@ export default function AdminDashboard() {
            {isSidebarOpen && (
              <motion.div className="mt-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, delay: 0.1 }}>
                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider">Account</p>
-               <button className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/70 hover:text-gray-900 dark:hover:text-white transition-all duration-300">
-                 <LogOut size={18} />
+               <button
+                 onClick={handleLogout}
+                 className="flex items-center w-full px-4 py-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400 transition-colors"
+               >
+                 <LogOut className="w-5 h-5 mr-3" />
                  <span>Logout</span>
                </button>
              </motion.div>
