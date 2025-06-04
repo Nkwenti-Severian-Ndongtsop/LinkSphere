@@ -9,7 +9,7 @@ mod logging;
 
 use axum::{
     http::Method,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
     middleware::{from_fn_with_state},
 };
@@ -31,12 +31,19 @@ use routes::{
     delete_link_handler, 
     increment_click_count_handler,
     create_link_handler,
+    update_link_handler,
+    get_link_tags_handler,
+    add_link_tag_handler,
+    remove_link_tag_handler,
     create_user_handler,
     auth::{login_handler, register_handler, logout_handler, verify_email_handler},
     get_user_stats_handler,
     get_all_links_handler,
     delete_user_handler,
     delete_any_link_handler,
+    tags::{get_tags_handler, create_tag_handler, delete_tag_handler},
+    categories::{get_categories_handler, create_category_handler, delete_category_handler},
+    profile::{get_profile_handler, update_profile_handler, change_password_handler},
 };
 use middleware::{
     auth::auth_middleware,
@@ -157,7 +164,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/links", get(get_links_handler))
         .route("/api/links", post(create_link_handler))
         .route("/api/links/:id", delete(delete_link_handler))
+        .route("/api/links/:id", put(update_link_handler))
         .route("/api/links/:id/click", post(increment_click_count_handler))
+        .route("/api/links/:id/tags", get(get_link_tags_handler))
+        .route("/api/links/:id/tags/:tag_id", post(add_link_tag_handler))
+        .route("/api/links/:id/tags/:tag_id", delete(remove_link_tag_handler))
+        .route("/api/tags", get(get_tags_handler))
+        .route("/api/tags", post(create_tag_handler))
+        .route("/api/tags/:id", delete(delete_tag_handler))
+        .route("/api/categories", get(get_categories_handler))
+        .route("/api/categories", post(create_category_handler))
+        .route("/api/categories/:id", delete(delete_category_handler))
+        .route("/api/users/me", get(get_profile_handler))
+        .route("/api/users/me", put(update_profile_handler))
+        .route("/api/users/me/password", put(change_password_handler))
         .layer(from_fn_with_state(app_state.clone(), auth_middleware))
         .with_state(app_state.clone());
 
