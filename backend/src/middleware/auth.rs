@@ -1,20 +1,20 @@
 use axum::{
+    body::Body,
     extract::State,
     http::{Request, StatusCode},
     middleware::Next,
     response::Response,
     Json,
-    body::Body,
 };
-use axum_extra::headers::{authorization::Bearer, Authorization, HeaderMapExt};
+use headers::{authorization::Bearer, Authorization, HeaderMapExt};
 use crate::{
     database::state::AppState, routes::auth::{AuthError, AuthErrorType}, services::JwtService
 };
 
 pub async fn auth_middleware(
-    State(_): State<AppState>,
+    State(_state): State<AppState>,
     mut req: Request<Body>,
-    next: Next,
+    next: Next<Body>,
 ) -> Result<Response, (StatusCode, Json<AuthError>)> {
     // Get the token from the Authorization header
     let auth_header = req
