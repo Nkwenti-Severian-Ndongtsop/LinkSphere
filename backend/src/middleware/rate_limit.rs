@@ -2,10 +2,10 @@ use std::sync::Arc;
 use axum::{
     extract::State,
     http::{Request, StatusCode},
-    middleware::Next,
     response::Response,
     Json,
-    body::Body,
+    body::BoxBody,
+    middleware::Next,
 };
 use tokio::sync::Mutex;
 use std::collections::HashMap;
@@ -49,13 +49,15 @@ impl RateLimiter {
     }
 }
 
-pub async fn rate_limit_middleware(
-    State(limiter): State<RateLimiter>,
-    req: Request<Body>,
-    next: Next,
-) -> Result<Response, (StatusCode, Json<AuthError>)> {
-    // Use IP address as rate limit key (you might want to use a different strategy)
-    let key = req
+pub async fn rate_limit_middleware<B>(
+    State(limiter): State<Arc<RateLimiter>>,
+    request: Request<B>,
+    next: Next<B>,
+) -> Result<Response<BoxBody>, (StatusCode, Json<AuthError>)>
+where
+    B: Send + 'static,
+{
+    let key = request
         .headers()
         .get("x-forwarded-for")
         .and_then(|h| h.to_str().ok())
@@ -73,5 +75,5 @@ pub async fn rate_limit_middleware(
         ));
     }
 
-    Ok(next.run(req).await)
+    Ok(next.run(request).await)
 } 
