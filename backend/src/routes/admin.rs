@@ -4,49 +4,46 @@ use axum::{
     Json,
 };
 use serde::Serialize;
-use tracing::{info, error};
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
+use tracing::error;
 
 use crate::{
     database::state::AppState,
     models::user::{User, UserRole},
     routes::auth::AuthUser,
+    error::{AppError, ErrorType},
 };
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct UserStats {
-    id: Uuid,
-    username: String,
-    email: String,
-    total_links: i64,
-    total_clicks: i64,
-    is_email_verified: bool,
-    created_at: chrono::DateTime<chrono::Utc>,
+    pub id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub total_links: i64,
+    pub total_clicks: i64,
+    pub user_role: UserRole,
+    pub is_email_verified: bool,
 }
 
 #[derive(Serialize)]
 pub struct AdminStats {
+    users_stats: Vec<UserStats>,
+    overall_stats: OverallStats,
+}
+
+#[derive(Serialize)]
+pub struct OverallStats {
     total_users: i64,
     total_links: i64,
     total_clicks: i64,
-    users: Vec<UserStats>,
+    verified_users: i64,
 }
 
 // Get all users with their stats
 pub async fn get_user_stats_handler(
     State(state): State<AppState>,
-    auth_user: AuthUser,
-) -> Result<Json<AdminStats>, (StatusCode, Json<serde_json::Value>)> {
-    // Verify admin status
-    if !auth_user.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "error": "Admin access required"
-            }))
-        ));
-    }
-
+) -> Result<Json<Vec<UserStats>>, (StatusCode, Json<AppError>)> {
     let users_with_stats = sqlx::query_as!(
         UserStats,
         r#"
@@ -54,14 +51,13 @@ pub async fn get_user_stats_handler(
             u.id,
             u.username,
             u.email,
+            u.user_role as "user_role: UserRole",
             u.is_email_verified,
-            u.created_at,
-            COUNT(DISTINCT l.id) as total_links,
-            COALESCE(SUM(l.click_count), 0) as total_clicks
+            COALESCE(COUNT(l.id), 0) as "total_links!: i64",
+            COALESCE(SUM(l.click_count), 0) as "total_clicks!: i64"
         FROM users u
         LEFT JOIN links l ON u.id = l.user_id
-        GROUP BY u.id, u.username, u.email, u.is_email_verified, u.created_at
-        ORDER BY u.created_at DESC
+        GROUP BY u.id, u.username, u.email, u.user_role, u.is_email_verified
         "#
     )
     .fetch_all(&state.pool)
@@ -70,63 +66,38 @@ pub async fn get_user_stats_handler(
         error!("Database error: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": "Failed to fetch user stats"
-            }))
+            Json(AppError::new(
+                "Failed to fetch user statistics",
+                ErrorType::DatabaseError,
+            )),
         )
     })?;
 
-    // Get overall statistics
-    let overall_stats = sqlx::query!(
-        r#"
-        SELECT 
-            COUNT(DISTINCT u.id) as total_users,
-            COUNT(DISTINCT l.id) as total_links,
-            COALESCE(SUM(l.click_count), 0) as total_clicks
-        FROM users u
-        LEFT JOIN links l ON u.id = l.user_id
-        "#
-    )
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| {
-        error!("Database error: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": "Failed to fetch overall stats"
-            }))
-        )
-    })?;
-
-    Ok(Json(AdminStats {
-        total_users: overall_stats.total_users.unwrap_or(0),
-        total_links: overall_stats.total_links.unwrap_or(0),
-        total_clicks: overall_stats.total_clicks.unwrap_or(0),
-        users: users_with_stats,
-    }))
+    Ok(Json(users_with_stats))
 }
 
 // Delete any user (admin only)
 pub async fn delete_user_handler(
     State(state): State<AppState>,
-    auth_user: AuthUser,
     Path(user_id): Path<Uuid>,
-) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    // Verify admin status
-    if !auth_user.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "error": "Admin access required"
-            }))
-        ));
-    }
-
-    // Don't allow deleting the admin account
+) -> Result<StatusCode, (StatusCode, Json<AppError>)> {
     let user = sqlx::query_as!(
         User,
-        "SELECT * FROM users WHERE id = $1",
+        r#"
+        SELECT 
+            id, username, email, password_hash,
+            user_role as "user_role: UserRole",
+            is_email_verified,
+            otp_code,
+            otp_expires_at,
+            verification_token,
+            verification_token_expires_at,
+            reset_token,
+            reset_token_expires_at,
+            created_at,
+            updated_at
+        FROM users WHERE id = $1
+        "#,
         user_id
     )
     .fetch_optional(&state.pool)
@@ -135,24 +106,35 @@ pub async fn delete_user_handler(
         error!("Database error: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": "Failed to fetch user"
-            }))
+            Json(AppError::new(
+                "Database error",
+                ErrorType::DatabaseError,
+            )),
         )
     })?;
 
-    if let Some(user) = user {
-        if user.user_role == UserRole::Admin {
+    match user {
+        Some(user) if user.user_role == UserRole::Admin => {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(serde_json::json!({
-                    "error": "Cannot delete admin account"
-                }))
+                Json(AppError::new(
+                    "Cannot delete admin user",
+                    ErrorType::Forbidden,
+                )),
             ));
         }
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(AppError::new(
+                    "User not found",
+                    ErrorType::NotFound,
+                )),
+            ));
+        }
+        _ => {}
     }
 
-    // Delete user and their links (cascade should handle this)
     sqlx::query!("DELETE FROM users WHERE id = $1", user_id)
         .execute(&state.pool)
         .await
@@ -160,32 +142,21 @@ pub async fn delete_user_handler(
             error!("Database error: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "Failed to delete user"
-                }))
+                Json(AppError::new(
+                    "Failed to delete user",
+                    ErrorType::DatabaseError,
+                )),
             )
         })?;
 
-    info!("Admin {} deleted user {}", auth_user.user_id, user_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
 // Delete any link (admin only)
 pub async fn delete_any_link_handler(
     State(state): State<AppState>,
-    auth_user: AuthUser,
     Path(link_id): Path<Uuid>,
-) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    // Verify admin status
-    if !auth_user.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "error": "Admin access required"
-            }))
-        ));
-    }
-
+) -> Result<StatusCode, (StatusCode, Json<AppError>)> {
     sqlx::query!("DELETE FROM links WHERE id = $1", link_id)
         .execute(&state.pool)
         .await
@@ -193,46 +164,35 @@ pub async fn delete_any_link_handler(
             error!("Database error: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "Failed to delete link"
-                }))
+                Json(AppError::new(
+                    "Failed to delete link",
+                    ErrorType::DatabaseError,
+                )),
             )
         })?;
 
-    info!("Admin {} deleted link {}", auth_user.user_id, link_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
 // Get all links across all users
 pub async fn get_all_links_handler(
     State(state): State<AppState>,
-    auth_user: AuthUser,
-) -> Result<Json<Vec<LinkWithUser>>, (StatusCode, Json<serde_json::Value>)> {
-    // Verify admin status
-    if !auth_user.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "error": "Admin access required"
-            }))
-        ));
-    }
-
+) -> Result<Json<Vec<LinkWithUser>>, (StatusCode, Json<AppError>)> {
     let links = sqlx::query_as!(
         LinkWithUser,
         r#"
         SELECT 
             l.id,
-            l.url,
             l.title,
+            l.url,
             l.description,
             l.click_count,
             l.created_at,
+            l.updated_at,
             u.username as user_username,
             u.email as user_email
         FROM links l
         JOIN users u ON l.user_id = u.id
-        ORDER BY l.created_at DESC
         "#
     )
     .fetch_all(&state.pool)
@@ -241,23 +201,25 @@ pub async fn get_all_links_handler(
         error!("Database error: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": "Failed to fetch links"
-            }))
+            Json(AppError::new(
+                "Failed to fetch links",
+                ErrorType::DatabaseError,
+            )),
         )
     })?;
 
     Ok(Json(links))
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct LinkWithUser {
-    id: Uuid,
-    url: String,
-    title: String,
-    description: String,
-    click_count: i32,
-    created_at: chrono::DateTime<chrono::Utc>,
-    user_username: String,
-    user_email: String,
+    pub id: Uuid,
+    pub title: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub click_count: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub user_username: String,
+    pub user_email: String,
 } 
