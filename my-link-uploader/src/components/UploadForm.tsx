@@ -2,19 +2,24 @@ import { useState, useRef, useEffect } from "react"
 import { motion, useAnimation } from "framer-motion"
 import { AlertCircle } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { Tag, tagsService } from "../services/tags.service"
+import { Category, categoriesService } from "../services/categories.service"
+import { linksService } from "../services/links.service"
 
 interface FormData {
   link: string;
-  topic: string
-  description: string
-  uploader: string
+  topic: string;
+  description: string;
+  uploader: string;
+  selectedTags: string[];
+  selectedCategories: string[];
 }
 
 interface FormErrors {
-  link?: string
-  topic?: string
-  description?: string
-  uploader?: string
+  link?: string;
+  topic?: string;
+  description?: string;
+  uploader?: string;
 }
 
 export default function UploadForm() {
@@ -23,17 +28,42 @@ export default function UploadForm() {
     topic: "",
     description: "",
     uploader: "",
+    selectedTags: [],
+    selectedCategories: [],
   })
 
   const [errors, setErrors] = useState<FormErrors>({})
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [focusedField, setFocusedField] = useState<keyof FormData | null>(null)
+  const [tags, setTags] = useState<Tag[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isLoadingData, setIsLoadingData] = useState(false)
 
   const controls = useAnimation()
   const formRef = useRef<HTMLFormElement>(null)
   const linkInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+
+  // Load tags and categories
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoadingData(true)
+      try {
+        const [fetchedTags, fetchedCategories] = await Promise.all([
+          tagsService.getTags(),
+          categoriesService.getCategories(),
+        ])
+        setTags(fetchedTags)
+        setCategories(fetchedCategories)
+      } catch (error) {
+        console.error('Failed to load tags and categories:', error)
+      } finally {
+        setIsLoadingData(false)
+      }
+    }
+    loadData()
+  }, [])
 
   // Focus first input on mount
   useEffect(() => {
@@ -81,6 +111,26 @@ export default function UploadForm() {
     }
   }
 
+  // Handle tag selection
+  const handleTagToggle = (tagId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedTags: prev.selectedTags.includes(tagId)
+        ? prev.selectedTags.filter(id => id !== tagId)
+        : [...prev.selectedTags, tagId]
+    }))
+  }
+
+  // Handle category selection
+  const handleCategoryToggle = (categoryId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedCategories: prev.selectedCategories.includes(categoryId)
+        ? prev.selectedCategories.filter(id => id !== categoryId)
+        : [...prev.selectedCategories, categoryId]
+    }))
+  }
+
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,31 +146,27 @@ export default function UploadForm() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch('/api/admin/links', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          url: formData.link,
-          title: formData.topic,
-          description: formData.description,
-          user_id: localStorage.getItem('userId'),
-        }),
+      const response = await linksService.createLink({
+        url: formData.link,
+        title: formData.topic,
+        description: formData.description,
+        tags: formData.selectedTags,
+        categories: formData.selectedCategories,
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || 'Failed to submit link')
-      }
-
       setSuccessMessage("Link submitted successfully!")
-      setFormData({ link: "", topic: "", description: "", uploader: "" })
+      setFormData({
+        link: "",
+        topic: "",
+        description: "",
+        uploader: "",
+        selectedTags: [],
+        selectedCategories: [],
+      })
       
-      // Redirect to admin dashboard after successful submission
+      // Redirect to dashboard after successful submission
       setTimeout(() => {
-        navigate('/admin')
+        navigate('/dashboard')
       }, 2000)
     } catch (error) {
       setErrors({ link: error instanceof Error ? error.message : "Failed to submit link. Please try again." })
@@ -313,27 +359,82 @@ export default function UploadForm() {
             )}
           </motion.div>
 
-          <motion.button
-            type="submit"
-            disabled={isSubmitting}
-            className={`w-full py-3 px-4 bg-purple-600 text-white rounded-lg font-medium ${
-              isSubmitting
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:bg-purple-700 active:bg-purple-800"
-            } transition-colors duration-200`}
-            variants={itemVariants}
-          >
-            {isSubmitting ? "Submitting..." : "Submit Link"}
-          </motion.button>
+          {/* Tags Selection */}
+          <motion.div variants={itemVariants} className="space-y-2">
+            <label className="block mb-1.5 font-medium text-gray-700 dark:text-gray-300">
+              Tags
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {isLoadingData ? (
+                <div className="text-sm text-gray-500">Loading tags...</div>
+              ) : (
+                tags.map(tag => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => handleTagToggle(tag.id)}
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      formData.selectedTags.includes(tag.id)
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {tag.name}
+                  </button>
+                ))
+              )}
+            </div>
+          </motion.div>
+
+          {/* Categories Selection */}
+          <motion.div variants={itemVariants} className="space-y-2">
+            <label className="block mb-1.5 font-medium text-gray-700 dark:text-gray-300">
+              Categories
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {isLoadingData ? (
+                <div className="text-sm text-gray-500">Loading categories...</div>
+              ) : (
+                categories.map(category => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => handleCategoryToggle(category.id)}
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      formData.selectedCategories.includes(category.id)
+                        ? 'bg-pink-500 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {category.name}
+                  </button>
+                ))
+              )}
+            </div>
+          </motion.div>
+
+          <motion.div variants={itemVariants}>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={`w-full py-3 rounded-lg font-medium text-white transition-all duration-200 ${
+                isSubmitting
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600"
+              }`}
+            >
+              {isSubmitting ? "Submitting..." : "Submit Link"}
+            </button>
+          </motion.div>
 
           {successMessage && (
-            <motion.p
+            <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center text-green-500 dark:text-green-400 mt-4"
+              className="text-center text-green-600 mt-4"
             >
               {successMessage}
-            </motion.p>
+            </motion.div>
           )}
         </motion.form>
       </div>
