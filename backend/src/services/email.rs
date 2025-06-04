@@ -5,6 +5,8 @@ use lettre::{Message, SmtpTransport, Transport};
 use lettre::message::{MultiPart, SinglePart, Mailbox};
 use rand::Rng;
 use std::env;
+use tracing::{info, error};
+use crate::error::{AppError, ErrorType};
 
 pub struct EmailService {
     smtp_transport: SmtpTransport,
@@ -12,16 +14,25 @@ pub struct EmailService {
 }
 
 impl EmailService {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let smtp_username = env::var("SMTP_USERNAME")?;
-        let smtp_password = env::var("SMTP_PASSWORD")?;
-        let smtp_server = env::var("SMTP_SERVER").unwrap_or_else(|_| "smtp.gmail.com".to_string());
-        let from_email = env::var("FROM_EMAIL")?;
+    pub fn new() -> Result<Self, AppError> {
+        let smtp_username = env::var("SMTP_USERNAME")
+            .map_err(|_| AppError::new("SMTP_USERNAME not set", ErrorType::Configuration))?;
+        let smtp_password = env::var("SMTP_PASSWORD")
+            .map_err(|_| AppError::new("SMTP_PASSWORD not set", ErrorType::Configuration))?;
+        let smtp_server = env::var("SMTP_SERVER")
+            .unwrap_or_else(|_| "smtp.gmail.com".to_string());
+        let from_email = env::var("FROM_EMAIL")
+            .map_err(|_| AppError::new("FROM_EMAIL not set", ErrorType::Configuration))?;
+
+        info!("Initializing email service with SMTP server: {}", smtp_server);
 
         let creds = Credentials::new(smtp_username, smtp_password);
-        let mailer = SmtpTransport::relay(&smtp_server)?
+        let mailer = SmtpTransport::relay(&smtp_server)
+            .map_err(|e| AppError::new(&format!("Failed to create SMTP transport: {}", e), ErrorType::Configuration))?
             .credentials(creds)
             .build();
+
+        info!("Email service initialized successfully");
 
         Ok(Self {
             smtp_transport: mailer,
@@ -36,16 +47,22 @@ impl EmailService {
             .collect()
     }
 
-    pub fn send_otp(&self, to_email: &str, otp: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn send_otp(&self, to_email: &str, otp: &str) -> Result<(), AppError> {
+        info!("Sending OTP email to: {}", to_email);
+
         // Create a mailbox with a friendly name
         let from_mailbox = Mailbox::new(
             Some("LinkSphere".into()),
-            self.from_email.parse()?
+            self.from_email.parse()
+                .map_err(|e| AppError::new(&format!("Invalid from email address: {}", e), ErrorType::Validation))?
         );
+
+        let to_mailbox = to_email.parse()
+            .map_err(|e| AppError::new(&format!("Invalid recipient email address: {}", e), ErrorType::Validation))?;
 
         let email = Message::builder()
             .from(from_mailbox)
-            .to(to_email.parse()?)
+            .to(to_mailbox)
             .subject("Your LinkSphere OTP Code")
             .multipart(
                 MultiPart::alternative()
@@ -74,9 +91,18 @@ impl EmailService {
                             otp = otp
                         ))
                     )
-            )?;
+            )
+            .map_err(|e| AppError::new(&format!("Failed to build email: {}", e), ErrorType::Internal))?;
 
-        self.smtp_transport.send(&email)?;
-        Ok(())
+        match self.smtp_transport.send(&email) {
+            Ok(_) => {
+                info!("Successfully sent OTP email to: {}", to_email);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to send OTP email: {}", e);
+                Err(AppError::new(&format!("Failed to send email: {}", e), ErrorType::Internal))
+            }
+        }
     }
 } 
