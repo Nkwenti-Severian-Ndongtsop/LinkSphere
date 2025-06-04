@@ -1,5 +1,3 @@
-import { toast } from 'react-toastify';
-
 export class ApiError extends Error {
     constructor(public status: number, message: string) {
         super(message);
@@ -55,11 +53,11 @@ export async function apiRequest<T>(
         return await handleApiResponse<T>(response);
     } catch (error) {
         if (error instanceof ApiError) {
-            toast.error(error.message);
+            // Let the caller handle displaying the error
             throw error;
         }
         console.error('API request failed:', error);
-        toast.error('Failed to connect to server');
+        // Handle network/connection errors
         throw new ApiError(500, 'Failed to connect to server');
     }
-} 
+}
