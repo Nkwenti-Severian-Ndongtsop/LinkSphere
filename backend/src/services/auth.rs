@@ -1,13 +1,16 @@
+#![allow(dead_code)]
+
 use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
+use chrono::{Utc, Duration};
 use uuid::Uuid;
 use sqlx::PgPool;
+use std::env;
 
 use crate::models::user::{User, CreateUserDto, LoginDto, UserRole};
-use crate::error::AppError;
+use crate::error::{AppError};
 
-const JWT_SECRET: &[u8] = b"your-secret-key"; // In production, use environment variable
+// In production, use environment variable
 const ACCESS_TOKEN_DURATION: i64 = 15; // 15 minutes
 const REFRESH_TOKEN_DURATION: i64 = 7 * 24 * 60; // 7 days in minutes
 
@@ -15,7 +18,7 @@ const REFRESH_TOKEN_DURATION: i64 = 7 * 24 * 60; // 7 days in minutes
 pub struct Claims {
     pub sub: Uuid, // user id
     pub email: String,
-    pub role: UserRole,
+    pub user_role: UserRole,
     pub exp: i64,
 }
 
@@ -34,101 +37,131 @@ impl AuthService {
         Self { pool }
     }
 
-    pub async fn register(&self, dto: CreateUserDto) -> Result<(User, AuthTokens), AppError> {
+    pub async fn register(&self, dto: CreateUserDto) -> Result<User, AppError> {
         // Check if email already exists
         if let Some(_) = User::find_by_email(&self.pool, &dto.email).await? {
-            return Err(AppError::EmailAlreadyExists);
+            return Err(AppError::email_already_exists());
         }
 
+        // Create user
         let user = User::create(&self.pool, dto).await?;
-        let tokens = self.generate_tokens(&user)?;
-
-        // TODO: Send verification email
-        
-        Ok((user, tokens))
+        Ok(user)
     }
 
-    pub async fn login(&self, dto: LoginDto) -> Result<(User, AuthTokens), AppError> {
+    pub async fn login(&self, dto: LoginDto) -> Result<AuthTokens, AppError> {
         let user = User::find_by_email(&self.pool, &dto.email)
             .await?
-            .ok_or(AppError::InvalidCredentials)?;
+            .ok_or_else(|| AppError::invalid_credentials())?;
 
-        if !user.verify_password(&dto.password) {
-            return Err(AppError::InvalidCredentials);
+        // Verify password
+        if !user.verify_password(&dto.password).unwrap_or(false) {
+            return Err(AppError::invalid_credentials());
         }
 
+        // Check if email is verified
         if !user.is_email_verified {
-            return Err(AppError::EmailNotVerified);
+            return Err(AppError::email_not_verified());
         }
 
+        // Generate tokens
         let tokens = self.generate_tokens(&user)?;
-        Ok((user, tokens))
-    }
-
-    pub async fn verify_email(&self, token: &str) -> Result<bool, AppError> {
-        let verified = User::verify_email(&self.pool, token).await?;
-        if !verified {
-            return Err(AppError::InvalidToken);
-        }
-        Ok(true)
-    }
-
-    pub async fn create_password_reset(&self, email: &str) -> Result<Option<String>, AppError> {
-        let token = User::create_password_reset(&self.pool, email).await?;
-        // TODO: Send password reset email if token is Some
-        Ok(token)
-    }
-
-    pub async fn reset_password(&self, token: &str, new_password: &str) -> Result<bool, AppError> {
-        let reset = User::reset_password(&self.pool, token, new_password).await?;
-        if !reset {
-            return Err(AppError::InvalidToken);
-        }
-        Ok(true)
+        Ok(tokens)
     }
 
     pub async fn refresh_token(&self, refresh_token: &str) -> Result<AuthTokens, AppError> {
         let claims = self.verify_token(refresh_token)?;
         
+        // Check if user still exists and is active
         let user = sqlx::query_as!(
             User,
-            r#"SELECT * FROM users WHERE id = $1"#,
+            r#"
+            SELECT 
+                id, username, email, password_hash,
+                user_role as "user_role: UserRole",
+                is_email_verified,
+                otp_code,
+                otp_expires_at,
+                verification_token,
+                verification_token_expires_at,
+                reset_token,
+                reset_token_expires_at,
+                created_at,
+                updated_at
+            FROM users WHERE id = $1
+            "#,
             claims.sub
         )
         .fetch_optional(&self.pool)
         .await?
-        .ok_or(AppError::InvalidToken)?;
+        .ok_or_else(|| AppError::invalid_token())?;
+    
+    // Generate new tokens
+    let tokens = self.generate_tokens(&user)?;
+    Ok(tokens)
+}
 
-        self.generate_tokens(&user)
+pub async fn verify_access_token(&self, token: &str) -> Result<Claims, AppError> {
+    let claims = self.verify_token(token)?;
+    
+    // Check if user still exists and is active
+    let user = sqlx::query_as!(
+        User,
+        r#"
+        SELECT 
+        id, username, email, password_hash,
+        user_role as "user_role: UserRole",
+        is_email_verified,
+        otp_code,
+        otp_expires_at,
+        verification_token,
+                verification_token_expires_at,
+                reset_token,
+                reset_token_expires_at,
+                created_at,
+                updated_at
+            FROM users WHERE id = $1
+            "#,
+            claims.sub
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::invalid_token())?;
+        
+    Ok(Claims {
+        sub: user.id,
+            email: user.email,
+            user_role: user.user_role,
+            exp: claims.exp,
+        })
     }
 
     fn generate_tokens(&self, user: &User) -> Result<AuthTokens, AppError> {
         let now = Utc::now();
-        
+        let jwt_secret: String = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
         let access_claims = Claims {
             sub: user.id,
             email: user.email.clone(),
-            role: user.role.clone(),
+            user_role: user.user_role,
             exp: (now + Duration::minutes(ACCESS_TOKEN_DURATION)).timestamp(),
-        };
+        }; 
 
         let refresh_claims = Claims {
             sub: user.id,
             email: user.email.clone(),
-            role: user.role.clone(),
+            user_role: user.user_role,
             exp: (now + Duration::minutes(REFRESH_TOKEN_DURATION)).timestamp(),
         };
 
         let access_token = encode(
             &Header::default(),
             &access_claims,
-            &EncodingKey::from_secret(JWT_SECRET),
+            &EncodingKey::from_secret(jwt_secret.as_bytes()),
         )?;
 
         let refresh_token = encode(
             &Header::default(),
             &refresh_claims,
-            &EncodingKey::from_secret(JWT_SECRET),
+            &EncodingKey::from_secret(jwt_secret.as_bytes()),
         )?;
 
         Ok(AuthTokens {
@@ -137,13 +170,15 @@ impl AuthService {
         })
     }
 
-    pub fn verify_token(&self, token: &str) -> Result<Claims, AppError> {
-        let claims = decode::<Claims>(
+    fn verify_token(&self, token: &str) -> Result<Claims, AppError> {
+        let jwt_secret: String = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+        let validation = Validation::new(Algorithm::HS256);
+        let token_data = decode::<Claims>(
             token,
-            &DecodingKey::from_secret(JWT_SECRET),
-            &Validation::new(Algorithm::HS256),
+                &DecodingKey::from_secret(jwt_secret.as_bytes()),
+            &validation,
         )?;
 
-        Ok(claims.claims)
+        Ok(token_data.claims)
     }
 } 
