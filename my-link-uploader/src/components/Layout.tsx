@@ -4,15 +4,16 @@ import type { ReactNode } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "../hooks/useTheme"
 import { motion } from "framer-motion"
-import { Sun, Moon, LinkIcon, Upload, LayoutDashboard, LogOut, LogIn } from "lucide-react"
+import { Sun, Moon, LinkIcon, Upload, LayoutDashboard, LogOut, LogIn, User } from "lucide-react"
 
 interface LayoutProps {
   children: ReactNode
   isAuthenticated: boolean
   onLogout: () => void
+  userRole?: string
 }
 
-export default function Layout({ children, isAuthenticated, onLogout }: LayoutProps) {
+export default function Layout({ children, isAuthenticated, onLogout, userRole }: LayoutProps) {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
   const navigate = useNavigate()
@@ -25,6 +26,8 @@ export default function Layout({ children, isAuthenticated, onLogout }: LayoutPr
       navigate('/auth/login')
     }
   }
+
+  const isAdmin = userRole === 'admin'
 
   return (
     <div
@@ -57,14 +60,26 @@ export default function Layout({ children, isAuthenticated, onLogout }: LayoutPr
                 <NavLink to="/upload" current={location.pathname === "/upload"}>
                   Upload
                 </NavLink>
-                <NavLink to="/admin" current={location.pathname === "/admin"}>
-                  Dashboard
-                </NavLink>
+                {isAdmin ? (
+                  <NavLink to="/admin" current={location.pathname === "/admin"}>
+                    Admin Dashboard
+                  </NavLink>
+                ) : (
+                  <NavLink to="/dashboard" current={location.pathname === "/dashboard"}>
+                    My Dashboard
+                  </NavLink>
+                )}
               </>
             )}
           </nav>
 
           <div className="flex items-center space-x-2">
+            {isAuthenticated && (
+              <div className="flex items-center mr-2 text-sm text-gray-600 dark:text-gray-400">
+                <User size={16} className="mr-1" />
+                <span>{isAdmin ? 'Admin' : 'User'}</span>
+              </div>
+            )}
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg hover:bg-purple-500/10 transition-colors"
@@ -124,7 +139,11 @@ export default function Layout({ children, isAuthenticated, onLogout }: LayoutPr
           {isAuthenticated && (
             <>
               <MobileNavLink to="/upload" icon={<Upload size={20} />} label="Upload" />
-              <MobileNavLink to="/admin" icon={<LayoutDashboard size={20} />} label="Admin" />
+              {isAdmin ? (
+                <MobileNavLink to="/admin" icon={<LayoutDashboard size={20} />} label="Admin" />
+              ) : (
+                <MobileNavLink to="/dashboard" icon={<User size={20} />} label="Dashboard" />
+              )}
             </>
           )}
         </div>
