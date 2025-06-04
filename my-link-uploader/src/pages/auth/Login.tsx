@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { EyeIcon, EyeOffIcon, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (role: string) => void;
 }
 
 interface ValidationErrors {
@@ -93,8 +93,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       }
 
       localStorage.setItem('token', data.token);
-      onLoginSuccess();
-      navigate('/admin');
+      onLoginSuccess(data.user.user_role);
+      navigate(data.user.user_role === 'admin' ? '/admin' : '/dashboard');
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'An error occurred during login');
     } finally {
