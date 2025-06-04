@@ -7,146 +7,198 @@ import {
   ChevronDown,
   LogOut,
   Menu,
-  // Settings,
   User,
   LinkIcon,
   LayoutDashboard,
-  // Activity,
   ExternalLink,
   Search,
   Trash2,
-  // Edit,
   Eye,
   X,
   Plus,
+  UserIcon,
+  Users,
 } from "lucide-react"
 import { Link } from "react-router-dom"
 
-// Define the ApiLink type (matching HomePage.tsx and backend response)
 interface ApiLink {
-    id: number;
-    user_id: number;
-    url: string;
-    title: string;
-    description: string;
-    click_count: number;
-    favicon_url?: string;
-    created_at: string;
-    uploader_username?: string;
+  id: number;
+  user_id: number;
+  url: string;
+  title: string;
+  description: string;
+  click_count: number;
+  favicon_url?: string;
+  created_at: string;
+  uploader_username?: string;
+}
+
+interface ApiUser {
+  id: number;
+  username: string;
+  email: string;
+  user_role: string;
+  is_email_verified: boolean;
+  created_at: string;
 }
 
 export default function AdminDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [links, setLinks] = useState<ApiLink[]>([])
+  const [users, setUsers] = useState<ApiUser[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'links' | 'users'>('links')
 
   const [filteredLinks, setFilteredLinks] = useState<ApiLink[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<ApiUser[]>([])
   const [selectedLink, setSelectedLink] = useState<ApiLink | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
 
-  // Fetch links from backend
-  const fetchLinks = useCallback(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-          const response = await fetch('/api/admin/links', {
-              headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('token')}`
-              }
-          })
-          if (!response.ok) {
-              throw new Error('Failed to fetch links')
+  // Fetch data from backend
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [linksResponse, usersResponse] = await Promise.all([
+        fetch('/api/admin/links', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
-          const data: ApiLink[] = await response.json()
-          setLinks(data)
-      } catch (e: any) {
-          console.error("Error fetching links:", e)
-          setError(e instanceof Error ? e.message : 'An error occurred')
-      } finally {
-          setLoading(false)
+        }),
+        fetch('/api/admin/users', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        })
+      ]);
+
+      if (!linksResponse.ok || !usersResponse.ok) {
+        throw new Error('Failed to fetch data')
       }
+
+      const [linksData, usersData] = await Promise.all([
+        linksResponse.json(),
+        usersResponse.json()
+      ]);
+
+      setLinks(linksData)
+      setUsers(usersData)
+    } catch (e: any) {
+      console.error("Error fetching data:", e)
+      setError(e instanceof Error ? e.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  // Fetch links on component mount
+  // Fetch data on component mount
   useEffect(() => {
-      fetchLinks()
-  }, [fetchLinks])
+    fetchData()
+  }, [fetchData])
 
-  // Filter links based on search query
+  // Filter data based on search query
   useEffect(() => {
-    let results = links
-
-    if (searchQuery) {
-      const lowerCaseQuery = searchQuery.toLowerCase()
-      results = results.filter(
-        (link) =>
-          link.title.toLowerCase().includes(lowerCaseQuery) ||
-          (link.description && link.description.toLowerCase().includes(lowerCaseQuery)) ||
-          link.url.toLowerCase().includes(lowerCaseQuery)
-      )
+    if (activeTab === 'links') {
+      let results = links
+      if (searchQuery) {
+        const lowerCaseQuery = searchQuery.toLowerCase()
+        results = results.filter(
+          (link) =>
+            link.title.toLowerCase().includes(lowerCaseQuery) ||
+            (link.description && link.description.toLowerCase().includes(lowerCaseQuery)) ||
+            link.url.toLowerCase().includes(lowerCaseQuery) ||
+            (link.uploader_username && link.uploader_username.toLowerCase().includes(lowerCaseQuery))
+        )
+      }
+      setFilteredLinks(results)
+    } else {
+      let results = users
+      if (searchQuery) {
+        const lowerCaseQuery = searchQuery.toLowerCase()
+        results = results.filter(
+          (user) =>
+            user.username.toLowerCase().includes(lowerCaseQuery) ||
+            user.email.toLowerCase().includes(lowerCaseQuery)
+        )
+      }
+      setFilteredUsers(results)
     }
-    setFilteredLinks(results)
-  }, [searchQuery, links])
+  }, [searchQuery, links, users, activeTab])
 
-  // Delete functionality
-  const handleDelete = async (id: number) => {
-      if (!window.confirm("Are you sure you want to delete this link?")) {
-          return
-      }
-      try {
-          const response = await fetch(`/api/links/${id}`, {
-              method: 'DELETE',
-          })
-
-          if (response.ok || response.status === 204) {
-              setLinks(prevLinks => prevLinks.filter(link => link.id !== id))
-              console.log(`Link ${id} deleted successfully.`)
-              if (selectedLink?.id === id) {
-                  closeDetailModal()
-              }
-          } else {
-               const errorText = await response.text()
-               throw new Error(`Failed to delete link ${id}. Status: ${response.status}. ${errorText}`)
-          }
-      } catch (e: any) {
-          console.error("Error deleting link:", e)
-          setError(`Failed to delete link: ${e.message || 'Unknown error'}`)
-      }
-  }
-
-  // Modal open/close handlers
-  const openDetailModal = (link: ApiLink) => { setSelectedLink(link); setIsDetailModalOpen(true); }
-  const closeDetailModal = () => { setIsDetailModalOpen(false); setSelectedLink(null); }
-
-  // Calculate total clicks
-  const totalClicks = useMemo(() => links.reduce((sum, link) => sum + link.click_count, 0), [links]);
-
-  // Animation variants
-  const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } }
-  const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } }
-
-  // Handle logout
-  const handleLogout = async () => {
+  // Delete link handler
+  const handleDeleteLink = async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this link?")) {
+      return
+    }
     try {
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
+      const response = await fetch(`/api/admin/links/${id}`, {
+        method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
-      });
-      
-      if (response.ok) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
+      })
+
+      if (response.ok || response.status === 204) {
+        setLinks(prevLinks => prevLinks.filter(link => link.id !== id))
+        if (selectedLink?.id === id) {
+          closeDetailModal()
+        }
       } else {
-        throw new Error('Logout failed');
+        const errorText = await response.text()
+        throw new Error(`Failed to delete link ${id}. Status: ${response.status}. ${errorText}`)
       }
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (e: any) {
+      console.error("Error deleting link:", e)
+      setError(`Failed to delete link: ${e.message || 'Unknown error'}`)
     }
-  };
+  }
+
+  // Delete user handler
+  const handleDeleteUser = async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this user? All their links will also be deleted.")) {
+      return
+    }
+    try {
+      const response = await fetch(`/api/admin/users/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+
+      if (response.ok || response.status === 204) {
+        setUsers(prevUsers => prevUsers.filter(user => user.id !== id))
+        // Also remove links associated with this user
+        setLinks(prevLinks => prevLinks.filter(link => link.user_id !== id))
+      } else {
+        const errorText = await response.text()
+        throw new Error(`Failed to delete user ${id}. Status: ${response.status}. ${errorText}`)
+      }
+    } catch (e: any) {
+      console.error("Error deleting user:", e)
+      setError(`Failed to delete user: ${e.message || 'Unknown error'}`)
+    }
+  }
+
+  // Modal handlers
+  const openDetailModal = (link: ApiLink) => {
+    setSelectedLink(link)
+    setIsDetailModalOpen(true)
+  }
+  const closeDetailModal = () => {
+    setIsDetailModalOpen(false)
+    setSelectedLink(null)
+  }
+
+  // Calculate statistics
+  const stats = useMemo(() => ({
+    totalLinks: links.length,
+    totalUsers: users.length,
+    totalClicks: links.reduce((sum, link) => sum + link.click_count, 0),
+    verifiedUsers: users.filter(user => user.is_email_verified).length
+  }), [links, users])
 
   return (
     <div className="flex h-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-xl overflow-hidden border border-purple-100 dark:border-purple-900/30 shadow-xl">
@@ -159,9 +211,9 @@ export default function AdminDashboard() {
         {/* Logo */}
         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between h-16">
           <div className="flex items-center space-x-2 overflow-hidden">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20">
-               <LinkIcon size={20} className="text-white" />
-             </div>
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <LinkIcon size={20} className="text-white" />
+            </div>
             {isSidebarOpen && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
@@ -184,289 +236,271 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* User profile */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-3">
-             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-md shadow-purple-500/20 flex-shrink-0">
-               <User size={20} className="text-white" />
-             </div>
-             {isSidebarOpen && (
-               <motion.div className="flex-1 min-w-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-                 <h3 className="font-medium text-gray-900 dark:text-white truncate">Admin User</h3>
-                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Administrator</p>
-               </motion.div>
-             )}
-             {isSidebarOpen && (
-               <motion.button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors duration-200 flex-shrink-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-                 <ChevronDown size={18} />
-               </motion.button>
-             )}
-           </div>
-         </div>
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto">
+          <nav className="p-4 space-y-2">
+            <button
+              onClick={() => setActiveTab('links')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                activeTab === 'links'
+                  ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
+              }`}
+            >
+              <LinkIcon size={20} />
+              {isSidebarOpen && <span>Links</span>}
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                activeTab === 'users'
+                  ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
+              }`}
+            >
+              <Users size={20} />
+              {isSidebarOpen && <span>Users</span>}
+            </button>
+          </nav>
+        </div>
 
-         {/* Navigation */}
-         <nav className="flex-1 p-4 overflow-y-auto">
-           {isSidebarOpen && (<motion.p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>Main Menu</motion.p>)}
-           <ul className="space-y-2">
-             <li>
-               <button className={`w-full flex items-center ${isSidebarOpen ? "justify-start space-x-3 px-4" : "justify-center"} py-3 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border border-purple-200/30 dark:border-purple-800/30 shadow-sm hover:shadow-md transition-all duration-300`}>
-                 <LayoutDashboard size={18} className="text-purple-600 dark:text-purple-400" />
-                 {isSidebarOpen && (<motion.span className="font-medium" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>Dashboard</motion.span>)}
-               </button>
-             </li>
-           </ul>
-           {isSidebarOpen && (
-             <motion.div className="mt-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, delay: 0.1 }}>
-               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider">Account</p>
-               <button
-                 onClick={handleLogout}
-                 className="flex items-center w-full px-4 py-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400 transition-colors"
-               >
-                 <LogOut className="w-5 h-5 mr-3" />
-                 <span>Logout</span>
-               </button>
-             </motion.div>
-           )}
-         </nav>
-
-         {isSidebarOpen && (
-           <motion.div className="p-4 border-t border-gray-200 dark:border-gray-700" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-             <p className="text-xs text-gray-500 dark:text-gray-400">LinkSphere v2.0.4</p>
-           </motion.div>
-         )}
+        {/* Stats */}
+        {isSidebarOpen && (
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300">Statistics</h4>
+                <div className="mt-2 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Total Links</span>
+                    <span className="font-medium">{stats.totalLinks}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Total Users</span>
+                    <span className="font-medium">{stats.totalUsers}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Total Clicks</span>
+                    <span className="font-medium">{stats.totalClicks}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Verified Users</span>
+                    <span className="font-medium">{stats.verifiedUsers}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-hidden">
         {/* Header */}
-        <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-gray-800">
-          <button className="lg:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-            <Menu size={20} />
-          </button>
+        <div className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6">
+          <h2 className="text-xl font-semibold">
+            {activeTab === 'links' ? 'All Links' : 'All Users'}
+          </h2>
           <div className="flex items-center space-x-4">
-            <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 relative">
-              <Bell size={18} />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-purple-500 ring-2 ring-white dark:ring-gray-800"></span>
-            </button>
-          </div>
-        </header>
-
-        {/* Main content */}
-        <main className="flex-1 overflow-auto p-6 bg-gray-50 dark:bg-gray-900">
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              className="flex items-center space-x-4 mb-8"
-              initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-            >
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
-              <LayoutDashboard size={26} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Dashboard</h1>
-                <p className="text-gray-600 dark:text-gray-400">View and manage links</p>
-              </div>
-            </motion.div>
-
-            {/* Stats */}
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"
-              variants={containerVariants} initial="hidden" animate="visible"
-            >
-              <motion.div
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group"
-                variants={itemVariants} whileHover={{ y: -5 }}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder={`Search ${activeTab}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:border-transparent"
+              />
+            </div>
+            {activeTab === 'links' && (
+              <Link
+                to="/upload"
+                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-lg shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40 transition-shadow"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-gray-600 dark:text-gray-400 font-medium">Total Links</h3>
-                  <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-800/40 transition-colors duration-300">
-                    <LinkIcon size={18} className="text-purple-600 dark:text-purple-400" />
-                  </div>
-                </div>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white">{loading ? '...' : links.length}</p>
-              </motion.div>
-
-              <motion.div
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group"
-                variants={itemVariants} whileHover={{ y: -5 }}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-gray-600 dark:text-gray-400 font-medium">Total Clicks</h3>
-                  <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/40 transition-colors duration-300">
-                    <ExternalLink size={18} className="text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                </div>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white">{loading ? '...' : totalClicks.toLocaleString()}</p>
-              </motion.div>
-            </motion.div>
-
-            {/* Links Management */}
-            <motion.div
-              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden"
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <h2 className="font-semibold text-lg text-gray-900 dark:text-white">Manage Links</h2>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative">
-                    <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search title, desc, url..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 pr-4 py-2 w-full sm:w-64 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-600 focus:border-transparent transition-all duration-200"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {loading && <div className="text-center p-12 text-gray-500">Loading links...</div>}
-              {error && <div className="text-center p-12 text-red-500">Error: {error}</div>}
-              {!loading && !error && (
-                 <div className="overflow-x-auto">
-                   <table className="w-full">
-                     <thead className="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 text-sm">
-                       <tr>
-                         <th className="px-6 py-3 text-left font-medium">Link Details</th>
-                         <th className="px-6 py-3 text-left font-medium">Added By</th>
-                         <th className="px-6 py-3 text-left font-medium">Clicks</th>
-                         <th className="px-6 py-3 text-left font-medium">Added</th>
-                         <th className="px-6 py-3 text-left font-medium">Actions</th>
-                       </tr>
-                     </thead>
-                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                       <AnimatePresence>
-                         {filteredLinks.length === 0 ? (
-                           <tr>
-                             <td colSpan={5} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                               {links.length === 0 ? "No links in the database yet." : "No links found matching your search."}
-                             </td>
-                           </tr>
-                         ) : (
-                           filteredLinks.map((link) => (
-                             <motion.tr
-                               key={link.id}
-                               className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-150"
-                               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} layout
-                             >
-                               <td className="px-6 py-4">
-                                 <div className="flex items-center">
-                                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mr-3 flex-shrink-0">
-                                      <LinkIcon size={14} className="text-purple-600 dark:text-purple-400" />
-                                   </div>
-                                   <div className="truncate max-w-[300px] sm:max-w-[400px] md:max-w-[500px]">
-                                     <a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-900 dark:text-white truncate hover:text-purple-600 dark:hover:text-purple-400 transition-colors">{link.title}</a>
-                                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate" title={link.description}>{link.description || "No description"}</p>
-                                     <p className="text-xs text-gray-400 dark:text-gray-500 truncate" title={link.url}>{link.url}</p>
-                                   </div>
-                                 </div>
-                               </td>
-                               <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                                 {link.uploader_username || `User ID: ${link.user_id}`}
-                               </td>
-                               <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{link.click_count}</td>
-                               <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                                   {link.created_at ? new Date(link.created_at).toLocaleString() : 'N/A'}
-                               </td>
-                               <td className="px-6 py-4">
-                                 <div className="flex items-center space-x-2">
-                                   <button
-                                     className="p-1.5 rounded-lg text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
-                                     title="View Details"
-                                     onClick={() => openDetailModal(link)}
-                                   > <Eye size={16} /> </button>
-                                   <button
-                                     className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                     title="Delete Link"
-                                     onClick={() => handleDelete(link.id)}
-                                   > <Trash2 size={16} /> </button>
-                                 </div>
-                               </td>
-                             </motion.tr>
-                           ))
-                         )}
-                       </AnimatePresence>
-                     </tbody>
-                   </table>
-                 </div>
-              )}
-
-              {!loading && !error && links.length > 0 && (
-                 <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      Showing <span className="font-medium text-gray-900 dark:text-white">{filteredLinks.length > 0 ? 1 : 0}</span> to{" "}
-                      <span className="font-medium text-gray-900 dark:text-white">{filteredLinks.length}</span> of{" "}
-                      <span className="font-medium text-gray-900 dark:text-white">{links.length}</span> links
-                    </div>
-                 </div>
-              )}
-            </motion.div>
+                <Plus size={20} className="mr-2" />
+                Add New Link
+              </Link>
+            )}
           </div>
-        </main>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-auto" style={{ height: 'calc(100vh - 4rem)' }}>
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center text-red-500">{error}</div>
+          ) : activeTab === 'links' ? (
+            // Links Table
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">URL</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Uploader</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Clicks</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created At</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredLinks.map((link) => (
+                    <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          {link.favicon_url && (
+                            <img src={link.favicon_url} alt="" className="h-5 w-5 rounded-full mr-2" />
+                          )}
+                          <span className="font-medium">{link.title}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-purple-600 dark:text-purple-400 hover:underline flex items-center"
+                        >
+                          <span className="truncate max-w-xs">{link.url}</span>
+                          <ExternalLink size={14} className="ml-1 flex-shrink-0" />
+                        </a>
+                      </td>
+                      <td className="px-6 py-4">{link.uploader_username}</td>
+                      <td className="px-6 py-4">{link.click_count}</td>
+                      <td className="px-6 py-4">
+                        {new Date(link.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => handleDeleteLink(link.id)}
+                          className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            // Users Table
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Username</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Joined</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center">
+                            <UserIcon size={16} className="text-white" />
+                          </div>
+                          <span className="ml-2 font-medium">{user.username}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">{user.email}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          user.user_role === 'admin'
+                            ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        }`}>
+                          {user.user_role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          user.is_email_verified
+                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
+                        }`}>
+                          {user.is_email_verified ? 'Verified' : 'Pending'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {user.user_role !== 'admin' && (
+                          <button
+                            onClick={() => handleDeleteUser(user.id)}
+                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Updated Link Detail Modal */}
+      {/* Link Detail Modal */}
       <AnimatePresence>
         {isDetailModalOpen && selectedLink && (
           <motion.div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={closeDetailModal}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
           >
             <motion.div
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-lg w-full"
             >
-              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Link Details</h3>
-                <button className="p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" onClick={closeDetailModal}>
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-semibold">{selectedLink.title}</h3>
+                <button
+                  onClick={closeDetailModal}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
                   <X size={20} />
                 </button>
               </div>
-
-              <div className="p-6 overflow-y-auto flex-grow">
-                <div className="flex items-center mb-6">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20 mr-4 flex-shrink-0">
-                    <LinkIcon size={24} className="text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-xl font-semibold text-gray-900 dark:text-white truncate">{selectedLink.title}</h4>
-                    <a href={selectedLink.url} target="_blank" rel="noopener noreferrer" className="text-sm text-purple-600 dark:text-purple-400 hover:underline flex items-center break-all">
-                      {selectedLink.url} <ExternalLink size={14} className="ml-1 flex-shrink-0" />
-                    </a>
-                  </div>
+              <div className="space-y-4">
+                <p className="text-gray-600 dark:text-gray-300">{selectedLink.description}</p>
+                <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                  <span>Uploaded by {selectedLink.uploader_username}</span>
+                  <span>{selectedLink.click_count} clicks</span>
                 </div>
-
-                {/* Clicks/Date/User ID */} 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
-                  <div><h5 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Total Clicks</h5><p className="text-gray-900 dark:text-white font-semibold">{selectedLink.click_count}</p></div>
-                  <div><h5 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Date Added</h5><p className="text-gray-900 dark:text-white">{selectedLink.created_at ? new Date(selectedLink.created_at).toLocaleString() : 'N/A'}</p></div>
-                  {/* Changed to Added By (Username or ID) */}
-                  <div>
-                     <h5 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Added By</h5>
-                     <p className="text-gray-900 dark:text-white">
-                        {selectedLink.uploader_username || `User ID: ${selectedLink.user_id}`}
-                     </p>
-                   </div>
+                <div className="flex justify-end space-x-2">
+                  <a
+                    href={selectedLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    Visit Link
+                  </a>
+                  <button
+                    onClick={() => {
+                      handleDeleteLink(selectedLink.id)
+                      closeDetailModal()
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Delete
+                  </button>
                 </div>
-                {/* Description */} 
-                {selectedLink.description && (<div className="mb-6"><h5 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Description</h5><p className="text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 whitespace-pre-wrap">{selectedLink.description}</p></div>)}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 justify-end p-6 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
-                <button
-                  onClick={closeDetailModal}
-                  className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                > Close </button>
-                <button
-                   onClick={() => handleDelete(selectedLink.id)}
-                   className="px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center space-x-1.5"
-                >
-                    <Trash2 size={16} />
-                    <span>Delete Link</span>
-                </button>
               </div>
             </motion.div>
           </motion.div>
