@@ -96,7 +96,7 @@ export default function UploadForm() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch('/api/links', {
+      const response = await fetch('/api/admin/links', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,12 +106,13 @@ export default function UploadForm() {
           url: formData.link,
           title: formData.topic,
           description: formData.description,
-          uploader_name: formData.uploader,
+          user_id: localStorage.getItem('userId'),
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to submit link')
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to submit link')
       }
 
       setSuccessMessage("Link submitted successfully!")
@@ -122,7 +123,7 @@ export default function UploadForm() {
         navigate('/admin')
       }, 2000)
     } catch (error) {
-      setErrors({ link: "Failed to submit link. Please try again." })
+      setErrors({ link: error instanceof Error ? error.message : "Failed to submit link. Please try again." })
       controls.start({
         x: [0, -10, 10, -10, 10, 0],
         transition: { duration: 0.5 },
