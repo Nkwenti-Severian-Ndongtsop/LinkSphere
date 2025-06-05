@@ -147,9 +147,9 @@ export default function UploadForm() {
 
     try {
       const response = await linksService.createLink({
-        url: formData.link,
-        title: formData.topic,
-        description: formData.description,
+          url: formData.link,
+          title: formData.topic,
+          description: formData.description,
         tags: formData.selectedTags,
         categories: formData.selectedCategories,
       })
@@ -415,15 +415,15 @@ export default function UploadForm() {
 
           <motion.div variants={itemVariants}>
             <button
-              type="submit"
-              disabled={isSubmitting}
+            type="submit"
+            disabled={isSubmitting}
               className={`w-full py-3 rounded-lg font-medium text-white transition-all duration-200 ${
-                isSubmitting
+              isSubmitting
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600"
               }`}
-            >
-              {isSubmitting ? "Submitting..." : "Submit Link"}
+          >
+            {isSubmitting ? "Submitting..." : "Submit Link"}
             </button>
           </motion.div>
 
