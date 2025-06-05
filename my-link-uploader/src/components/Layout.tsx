@@ -61,13 +61,13 @@ export default function Layout({ children, isAuthenticated, onLogout, userRole }
                   Upload
                 </NavLink>
                 {isAdmin ? (
-                  <NavLink to="/admin" current={location.pathname === "/admin"}>
+                <NavLink to="/admin" current={location.pathname === "/admin"}>
                     Admin Dashboard
                   </NavLink>
                 ) : (
                   <NavLink to="/dashboard" current={location.pathname === "/dashboard"}>
                     My Dashboard
-                  </NavLink>
+                </NavLink>
                 )}
               </>
             )}
@@ -140,7 +140,7 @@ export default function Layout({ children, isAuthenticated, onLogout, userRole }
             <>
               <MobileNavLink to="/upload" icon={<Upload size={20} />} label="Upload" />
               {isAdmin ? (
-                <MobileNavLink to="/admin" icon={<LayoutDashboard size={20} />} label="Admin" />
+              <MobileNavLink to="/admin" icon={<LayoutDashboard size={20} />} label="Admin" />
               ) : (
                 <MobileNavLink to="/dashboard" icon={<User size={20} />} label="Dashboard" />
               )}
