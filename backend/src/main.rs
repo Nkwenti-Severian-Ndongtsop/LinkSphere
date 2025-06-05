@@ -27,7 +27,7 @@ use database::state::{PoolState, AppState};
 use database::db::{create_pool, run_migrations};
 use routes::{
     root_handler, 
-    get_links_handler, 
+    get_user_links_handler, 
     delete_link_handler, 
     increment_click_count_handler,
     create_link_handler,
@@ -44,6 +44,7 @@ use routes::{
     tags::{get_tags_handler, create_tag_handler, delete_tag_handler},
     categories::{get_categories_handler, create_category_handler, delete_category_handler},
     profile::{get_profile_handler, update_profile_handler, change_password_handler},
+    get_public_links_handler,
 };
 use middleware::{
     auth::auth_middleware,
@@ -152,6 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/auth/verify-email", post(verify_email_handler))
         .route("/api/auth/logout", post(logout_handler))
         .route("/api/users", post(create_user_handler))
+        .route("/api/links/public", get(get_public_links_handler))
         .layer(cors)
         .layer(CookieManagerLayer::new())
         .layer(from_fn_with_state(rate_limiter, rate_limit_middleware))
@@ -161,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Protected user routes
     let protected_routes = Router::new()
         .route("/", get(root_handler))
-        .route("/api/links", get(get_links_handler))
+        .route("/api/links", get(get_user_links_handler))
         .route("/api/links", post(create_link_handler))
         .route("/api/links/:id", delete(delete_link_handler))
         .route("/api/links/:id", put(update_link_handler))
