@@ -43,12 +43,19 @@ export async function apiRequest<T>(
     options: RequestInit = {}
 ): Promise<T> {
     try {
+        // Get the auth token from localStorage
+        const token = localStorage.getItem('token');
+        
+        // Prepare headers with auth token if available
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            ...options.headers,
+        };
+
         const response = await fetch(url, {
             ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers,
-            },
+            headers,
         });
         return await handleApiResponse<T>(response);
     } catch (error) {
