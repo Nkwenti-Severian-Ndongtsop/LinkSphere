@@ -21,11 +21,9 @@ pub struct Link {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateLinkRequest {
-    pub user_id: Uuid,
     pub url: String,
     pub title: String,
     pub description: String,
-    pub uploader_name: String,
     pub favicon_url: Option<String>,
 }
 
@@ -34,15 +32,14 @@ impl Link {
         sqlx::query_as!(
             Self,
             r#"
-            INSERT INTO links (user_id, url, title, description, uploader_name, click_count, favicon_url, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 0, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO links (user_id, url, title, description, click_count, favicon_url, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, 0, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING *
             "#,
             user_id,
             req.url,
             req.title,
             req.description,
-            req.uploader_name,
             req.favicon_url
         )
         .fetch_one(pool)
@@ -53,7 +50,10 @@ impl Link {
         sqlx::query_as!(
             Self,
             r#"
-            SELECT * FROM links 
+            SELECT 
+                id, user_id, url, title, description, uploader_name,
+                click_count, favicon_url, created_at, updated_at
+            FROM links 
             WHERE user_id = $1
             ORDER BY created_at DESC
             "#,
@@ -67,7 +67,11 @@ impl Link {
         sqlx::query_as!(
             Self,
             r#"
-            SELECT * FROM links WHERE id = $1
+            SELECT 
+                id, user_id, url, title, description, uploader_name,
+                click_count, favicon_url, created_at, updated_at
+            FROM links 
+            WHERE id = $1
             "#,
             id
         )
