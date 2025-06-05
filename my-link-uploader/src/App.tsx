@@ -67,16 +67,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           <Layout isAuthenticated={isAuthenticated} onLogout={handleLogout} userRole={userRole}>
             <Routes>
-              <Route 
-                path="/" 
-                element={
-                  isAuthenticated ? (
-                    <Navigate to={userRole === 'admin' ? '/admin' : '/dashboard'} replace />
-                  ) : (
-                    <HomePage />
-                  )
-                } 
-              />
+              <Route path="/" element={<HomePage />} />
               <Route 
                 path="/admin" 
                 element={
