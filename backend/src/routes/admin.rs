@@ -174,6 +174,20 @@ pub async fn delete_any_link_handler(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Serialize)]
+pub struct LinkWithUser {
+    pub id: Uuid,
+    pub title: String,
+    pub url: String,
+    pub description: String,
+    pub click_count: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub uploader_username: String,
+    pub user_id: Uuid,
+    pub favicon_url: Option<String>,
+}
+
 // Get all links across all users
 pub async fn get_all_links_handler(
     State(state): State<AppState>,
@@ -189,8 +203,8 @@ pub async fn get_all_links_handler(
             l.click_count,
             l.created_at,
             l.updated_at,
-            u.username as user_username,
-            u.email as user_email,
+            l.favicon_url,
+            u.username as uploader_username,
             u.id as user_id
         FROM links l
         JOIN users u ON l.user_id = u.id
@@ -211,18 +225,4 @@ pub async fn get_all_links_handler(
     })?;
 
     Ok(Json(links))
-}
-
-#[derive(Debug, Serialize)]
-pub struct LinkWithUser {
-    pub id: Uuid,
-    pub title: String,
-    pub url: String,
-    pub description: Option<String>,
-    pub click_count: i32,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub user_username: String,
-    pub user_email: String,
-    pub user_id: Uuid,
 } 
