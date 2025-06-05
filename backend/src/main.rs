@@ -147,7 +147,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build the router with public routes
     info!("🛠️ Configuring routes...");
     let app = Router::new()
-        .route("/", get(root_handler))
         .route("/api/auth/login", post(login_handler))
         .route("/api/auth/register", post(register_handler))
         .route("/api/auth/verify-email", post(verify_email_handler))
@@ -161,6 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Protected user routes
     let protected_routes = Router::new()
+        .route("/", get(root_handler))
         .route("/api/links", get(get_links_handler))
         .route("/api/links", post(create_link_handler))
         .route("/api/links/:id", delete(delete_link_handler))
