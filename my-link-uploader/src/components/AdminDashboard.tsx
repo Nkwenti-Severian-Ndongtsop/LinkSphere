@@ -3,17 +3,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Bell,
-  ChevronDown,
-  LogOut,
   Menu,
-  User,
   LinkIcon,
-  LayoutDashboard,
   ExternalLink,
   Search,
   Trash2,
-  Eye,
   X,
   Plus,
   UserIcon,
@@ -22,19 +16,20 @@ import {
 import { Link } from "react-router-dom"
 
 interface ApiLink {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   url: string;
   title: string;
   description: string;
   click_count: number;
   favicon_url?: string;
   created_at: string;
-  uploader_username?: string;
+  updated_at: string;
+  uploader_name: string;
 }
 
 interface ApiUser {
-  id: number;
+  id: string;
   username: string;
   email: string;
   user_role: string;
@@ -62,20 +57,23 @@ export default function AdminDashboard() {
     setError(null)
     try {
       const [linksResponse, usersResponse] = await Promise.all([
-        fetch('/api/admin/links', {
+        fetch('/api/admin/all-links', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
         }),
-        fetch('/api/admin/users', {
+        fetch('/api/admin/user-stats', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
         })
       ]);
 
-      if (!linksResponse.ok || !usersResponse.ok) {
-        throw new Error('Failed to fetch data')
+      if (!linksResponse.ok) {
+        throw new Error(`Failed to fetch links: ${linksResponse.status} ${linksResponse.statusText}`);
+      }
+      if (!usersResponse.ok) {
+        throw new Error(`Failed to fetch users: ${usersResponse.status} ${usersResponse.statusText}`);
       }
 
       const [linksData, usersData] = await Promise.all([
@@ -87,7 +85,15 @@ export default function AdminDashboard() {
       setUsers(usersData)
     } catch (e: any) {
       console.error("Error fetching data:", e)
-      setError(e instanceof Error ? e.message : 'An error occurred')
+      if (e.message.includes('Failed to fetch')) {
+        setError('Unable to connect to server. Please check your internet connection.')
+      } else if (e.status === 401) {
+        setError('Your session has expired. Please log in again.')
+      } else if (e.status === 403) {
+        setError('You do not have permission to access this resource.')
+      } else {
+        setError(e.message || 'An unexpected error occurred. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -107,9 +113,9 @@ export default function AdminDashboard() {
         results = results.filter(
           (link) =>
             link.title.toLowerCase().includes(lowerCaseQuery) ||
-            (link.description && link.description.toLowerCase().includes(lowerCaseQuery)) ||
+            link.description.toLowerCase().includes(lowerCaseQuery) ||
             link.url.toLowerCase().includes(lowerCaseQuery) ||
-            (link.uploader_username && link.uploader_username.toLowerCase().includes(lowerCaseQuery))
+            link.uploader_name.toLowerCase().includes(lowerCaseQuery)
         )
       }
       setFilteredLinks(results)
@@ -128,7 +134,7 @@ export default function AdminDashboard() {
   }, [searchQuery, links, users, activeTab])
 
   // Delete link handler
-  const handleDeleteLink = async (id: number) => {
+  const handleDeleteLink = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this link?")) {
       return
     }
@@ -156,7 +162,7 @@ export default function AdminDashboard() {
   }
 
   // Delete user handler
-  const handleDeleteUser = async (id: number) => {
+  const handleDeleteUser = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this user? All their links will also be deleted.")) {
       return
     }
@@ -170,7 +176,6 @@ export default function AdminDashboard() {
 
       if (response.ok || response.status === 204) {
         setUsers(prevUsers => prevUsers.filter(user => user.id !== id))
-        // Also remove links associated with this user
         setLinks(prevLinks => prevLinks.filter(link => link.user_id !== id))
       } else {
         const errorText = await response.text()
@@ -368,7 +373,7 @@ export default function AdminDashboard() {
                           <ExternalLink size={14} className="ml-1 flex-shrink-0" />
                         </a>
                       </td>
-                      <td className="px-6 py-4">{link.uploader_username}</td>
+                      <td className="px-6 py-4">{link.uploader_name}</td>
                       <td className="px-6 py-4">{link.click_count}</td>
                       <td className="px-6 py-4">
                         {new Date(link.created_at).toLocaleDateString()}
@@ -479,7 +484,7 @@ export default function AdminDashboard() {
               <div className="space-y-4">
                 <p className="text-gray-600 dark:text-gray-300">{selectedLink.description}</p>
                 <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-                  <span>Uploaded by {selectedLink.uploader_username}</span>
+                  <span>Uploaded by {selectedLink.uploader_name}</span>
                   <span>{selectedLink.click_count} clicks</span>
                 </div>
                 <div className="flex justify-end space-x-2">
