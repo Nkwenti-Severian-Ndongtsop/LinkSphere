@@ -27,13 +27,14 @@ pub use auth::{
 
 pub use links::{
     create_link_handler,
-    get_links_handler,
+    get_user_links_handler,
     delete_link_handler,
     update_link_handler,
     increment_click_count_handler,
     get_link_tags_handler,
     add_link_tag_handler,
     remove_link_tag_handler,
+    get_public_links_handler,
 };
 
 pub use users::{
