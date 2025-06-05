@@ -5,11 +5,27 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use sqlx::{postgres::PgRow, FromRow, Row};
 use crate::{
     database::state::AppState,
     error::{AppError, ErrorType},
     routes::auth::AuthUser,
 };
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Tag {
+    pub id: Uuid,
+    pub name: String,
+    pub user_id: Uuid,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Category {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub user_id: Uuid,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Link {
@@ -21,6 +37,26 @@ pub struct Link {
     pub click_count: i32,
     pub favicon_url: Option<String>,
     pub uploader_name: String,
+    pub tags: Option<Vec<Tag>>,
+    pub categories: Option<Vec<Category>>,
+}
+
+// Implement FromRow for Link to handle custom deserialization
+impl<'r> FromRow<'r, PgRow> for Link {
+    fn from_row(row: &'r PgRow) -> Result<Self, sqlx::Error> {
+        Ok(Link {
+            id: row.try_get("id")?,
+            user_id: row.try_get("user_id")?,
+            url: row.try_get("url")?,
+            title: row.try_get("title")?,
+            description: row.try_get("description")?,
+            click_count: row.try_get("click_count")?,
+            favicon_url: row.try_get("favicon_url")?,
+            uploader_name: row.try_get("uploader_name")?,
+            tags: None,
+            categories: None,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +86,7 @@ pub async fn create_link_handler(
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
     
     // Start transaction
-    let mut tx = state.pool.begin().await.map_err(|e| {
+    let mut tx = state.pool.begin().await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
@@ -61,26 +97,25 @@ pub async fn create_link_handler(
     })?;
 
     // Create link
-    let link = sqlx::query_as!(
-        Link,
+    let mut link = sqlx::query_as::<_, Link>(
         r#"
         INSERT INTO links (user_id, url, title, description, favicon_url, click_count, uploader_name)
         VALUES ($1, $2, $3, $4, $5, 0, (SELECT username FROM users WHERE id = $1))
         RETURNING id, user_id, url, title, description, click_count, favicon_url, uploader_name
-        "#,
-        user_id,
-        payload.url,
-        payload.title,
-        payload.description,
-        payload.favicon_url,
+        "#
     )
-    .fetch_one(&mut tx)
+    .bind(user_id)
+    .bind(&payload.url)
+    .bind(&payload.title)
+    .bind(&payload.description)
+    .bind(&payload.favicon_url)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to create link",
+                &format!("Failed to create link: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -89,21 +124,21 @@ pub async fn create_link_handler(
     // Add tags if provided
     if let Some(tags) = payload.tags {
         for tag_id in tags {
-            sqlx::query!(
+            sqlx::query(
                 r#"
                 INSERT INTO link_tags (link_id, tag_id)
                 VALUES ($1, $2)
-                "#,
-                link.id,
-                tag_id
+                "#
             )
-            .execute(&mut tx)
+            .bind(link.id)
+            .bind(tag_id)
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(AppError::new(
-                        "Failed to add tags",
+                        &format!("Failed to add tags: {}", e),
                         ErrorType::DatabaseError,
                     )),
                 )
@@ -114,21 +149,21 @@ pub async fn create_link_handler(
     // Add categories if provided
     if let Some(categories) = payload.categories {
         for category_id in categories {
-            sqlx::query!(
+            sqlx::query(
                 r#"
                 INSERT INTO link_categories (link_id, category_id)
                 VALUES ($1, $2)
-                "#,
-                link.id,
-                category_id
+                "#
             )
-            .execute(&mut tx)
+            .bind(link.id)
+            .bind(category_id)
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(AppError::new(
-                        "Failed to add categories",
+                        &format!("Failed to add categories: {}", e),
                         ErrorType::DatabaseError,
                     )),
                 )
@@ -141,11 +176,15 @@ pub async fn create_link_handler(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to commit transaction",
+                &format!("Failed to commit transaction: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
     })?;
+
+    // Initialize empty tags and categories
+    link.tags = Some(Vec::new());
+    link.categories = Some(Vec::new());
 
     Ok(Json(link))
 }
@@ -157,8 +196,7 @@ pub async fn get_links_handler(
 ) -> Result<Json<Vec<Link>>, (StatusCode, Json<AppError>)> {
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
     
-    let links = sqlx::query_as!(
-        Link,
+    let mut links = sqlx::query_as::<_, Link>(
         r#"
         SELECT 
             l.id,
@@ -173,20 +211,71 @@ pub async fn get_links_handler(
         JOIN users u ON l.user_id = u.id
         WHERE l.user_id = $1
         ORDER BY l.created_at DESC
-        "#,
-        user_id
+        "#
     )
+    .bind(user_id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,  
             Json(AppError::new(
-                "Failed to fetch links",
+                &format!("Failed to fetch links: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
     })?;
+
+    // Fetch tags and categories for each link
+    for link in &mut links {
+        // Get tags
+        link.tags = Some(
+            sqlx::query_as::<_, Tag>(
+                r#"
+                SELECT t.id, t.name, t.user_id
+                FROM tags t
+                JOIN link_tags lt ON t.id = lt.tag_id
+                WHERE lt.link_id = $1
+                "#
+            )
+            .bind(link.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(AppError::new(
+                        &format!("Failed to fetch tags: {}", e),
+                        ErrorType::DatabaseError,
+                    )),
+                )
+            })?
+        );
+
+        // Get categories
+        link.categories = Some(
+            sqlx::query_as::<_, Category>(
+                r#"
+                SELECT c.id, c.name, c.description, c.user_id
+                FROM categories c
+                JOIN link_categories lc ON c.id = lc.category_id
+                WHERE lc.link_id = $1
+                "#
+            )
+            .bind(link.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(AppError::new(
+                        &format!("Failed to fetch categories: {}", e),
+                        ErrorType::DatabaseError,
+                    )),
+                )
+            })?
+        );
+    }
 
     Ok(Json(links))
 }
@@ -200,8 +289,7 @@ pub async fn update_link_handler(
 ) -> Result<Json<Link>, (StatusCode, Json<AppError>)> {
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
 
-    let link = sqlx::query_as!(
-        Link,
+    let link = sqlx::query_as::<_, Link>(
         r#"
         UPDATE links
         SET 
@@ -211,28 +299,77 @@ pub async fn update_link_handler(
             favicon_url = $4
         WHERE id = $5 AND user_id = $6
         RETURNING id, user_id, url, title, description, click_count, favicon_url, uploader_name
-        "#,
-        payload.title,
-        payload.description,
-        payload.url,
-        payload.favicon_url,
-        link_id,
-        user_id
+        "#
     )
+    .bind(payload.title)
+    .bind(payload.description)
+    .bind(payload.url)
+    .bind(payload.favicon_url)
+    .bind(link_id)
+    .bind(user_id)
     .fetch_optional(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to update link",
+                &format!("Failed to update link: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
     })?;
 
     match link {
-        Some(link) => Ok(Json(link)),
+        Some(mut link) => {
+            // Fetch tags and categories for the updated link
+            link.tags = Some(
+                sqlx::query_as::<_, Tag>(
+                    r#"
+                    SELECT t.id, t.name, t.user_id
+                    FROM tags t
+                    JOIN link_tags lt ON t.id = lt.tag_id
+                    WHERE lt.link_id = $1
+                    "#
+                )
+                .bind(link.id)
+                .fetch_all(&state.pool)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(AppError::new(
+                            &format!("Failed to fetch tags: {}", e),
+                            ErrorType::DatabaseError,
+                        )),
+                    )
+                })?
+            );
+
+            link.categories = Some(
+                sqlx::query_as::<_, Category>(
+                    r#"
+                    SELECT c.id, c.name, c.description, c.user_id
+                    FROM categories c
+                    JOIN link_categories lc ON c.id = lc.category_id
+                    WHERE lc.link_id = $1
+                    "#
+                )
+                .bind(link.id)
+                .fetch_all(&state.pool)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(AppError::new(
+                            &format!("Failed to fetch categories: {}", e),
+                            ErrorType::DatabaseError,
+                        )),
+                    )
+                })?
+            );
+
+            Ok(Json(link))
+        },
         None => Err((
             StatusCode::NOT_FOUND,
             Json(AppError::new(
@@ -251,21 +388,21 @@ pub async fn delete_link_handler(
 ) -> Result<StatusCode, (StatusCode, Json<AppError>)> {
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
 
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         DELETE FROM links
         WHERE id = $1 AND user_id = $2
-        "#,
-        link_id,
-        user_id
+        "#
     )
+    .bind(link_id)
+    .bind(user_id)
     .execute(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to delete link",
+                &format!("Failed to delete link: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -289,21 +426,21 @@ pub async fn increment_click_count_handler(
     State(state): State<AppState>,
     Path(link_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<AppError>)> {
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         UPDATE links
         SET click_count = click_count + 1
         WHERE id = $1
-        "#,
-        link_id
+        "#
     )
+    .bind(link_id)
     .execute(&state.pool)
     .await
-        .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to increment click count",
+                &format!("Failed to increment click count: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -330,25 +467,24 @@ pub async fn get_link_tags_handler(
 ) -> Result<Json<Vec<Tag>>, (StatusCode, Json<AppError>)> {
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
 
-    let tags = sqlx::query_as!(
-        Tag,
+    let tags = sqlx::query_as::<_, Tag>(
         r#"
         SELECT t.id, t.name, t.user_id
         FROM tags t
         JOIN link_tags lt ON t.id = lt.tag_id
         JOIN links l ON lt.link_id = l.id
         WHERE l.id = $1 AND l.user_id = $2
-        "#,
-        link_id,
-        user_id
+        "#
     )
+    .bind(link_id)
+    .bind(user_id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to fetch link tags",
+                &format!("Failed to fetch link tags: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -366,18 +502,18 @@ pub async fn add_link_tag_handler(
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
 
     // Verify link ownership
-    let link = sqlx::query!(
-        "SELECT id FROM links WHERE id = $1 AND user_id = $2",
-        link_id,
-        user_id
+    let link = sqlx::query(
+        "SELECT id FROM links WHERE id = $1 AND user_id = $2"
     )
+    .bind(link_id)
+    .bind(user_id)
     .fetch_optional(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Database error",
+                &format!("Database error: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -394,22 +530,22 @@ pub async fn add_link_tag_handler(
     }
 
     // Add tag to link
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO link_tags (link_id, tag_id)
         VALUES ($1, $2)
         ON CONFLICT DO NOTHING
-        "#,
-        link_id,
-        tag_id
+        "#
     )
+    .bind(link_id)
+    .bind(tag_id)
     .execute(&state.pool)
     .await
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to add tag to link",
+                &format!("Failed to add tag to link: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -427,18 +563,18 @@ pub async fn remove_link_tag_handler(
     let user_id = Uuid::parse_str(&auth_user.user_id).unwrap();
 
     // Verify link ownership
-    let link = sqlx::query!(
-        "SELECT id FROM links WHERE id = $1 AND user_id = $2",
-        link_id,
-        user_id
+    let link = sqlx::query(
+        "SELECT id FROM links WHERE id = $1 AND user_id = $2"
     )
+    .bind(link_id)
+    .bind(user_id)
     .fetch_optional(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Database error",
+                &format!("Database error: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
@@ -455,21 +591,21 @@ pub async fn remove_link_tag_handler(
     }
 
     // Remove tag from link
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         DELETE FROM link_tags
         WHERE link_id = $1 AND tag_id = $2
-        "#,
-        link_id,
-        tag_id
+        "#
     )
+    .bind(link_id)
+    .bind(tag_id)
     .execute(&state.pool)
     .await
-    .map_err(|_| {
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::new(
-                "Failed to remove tag from link",
+                &format!("Failed to remove tag from link: {}", e),
                 ErrorType::DatabaseError,
             )),
         )
