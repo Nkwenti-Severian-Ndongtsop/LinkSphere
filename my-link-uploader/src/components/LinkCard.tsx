@@ -46,11 +46,11 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
   const isOwner = currentUser && link.user_id === currentUser.id;
   const hasImage = !!link.preview?.image && !imageError;
 
-  // Helper: is link editable (within 1 minute for testing)?
+  // Helper: is link editable (within 24 hours)?
   const isEditable = () => {
     const created = new Date(link.created_at);
     const now = new Date();
-    return (now.getTime() - created.getTime()) < 60 * 1000; // 1 minute
+    return (now.getTime() - created.getTime()) < 24 * 60 * 60 * 1000; // 24 hours
   };
 
   const handleDelete = (e: React.MouseEvent) => {
