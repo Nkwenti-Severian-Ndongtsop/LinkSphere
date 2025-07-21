@@ -45,6 +45,13 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
   const isOwner = currentUser && link.user_id === currentUser.id;
   const hasImage = !!link.preview?.image && !imageError;
 
+  // Helper: is link editable (within 24 hours)?
+  const isEditable = () => {
+    const created = new Date(link.created_at);
+    const now = new Date();
+    return (now.getTime() - created.getTime()) < 24 * 60 * 60 * 1000;
+  };
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowModal(true);
@@ -141,20 +148,29 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
               <ExternalLink size={20} />
               <span>Visit Link</span>
             </button>
-            <div className="flex gap-2">
+            {isEditable() ? (
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
+                  onClick={handleEdit}
+                >
+                  Edit
+                </button>
+                <button
+                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-red-600 text-white hover:bg-red-700 text-sm font-semibold"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              </div>
+            ) : (
               <button
-                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
-                onClick={handleEdit}
-              >
-                Edit
-              </button>
-              <button
-                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-red-600 text-white hover:bg-red-700 text-sm font-semibold"
+                className="w-full px-3 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 transition text-sm font-semibold"
                 onClick={handleDelete}
               >
                 Delete
               </button>
-            </div>
+            )}
             <ConfirmationModal
               isOpen={showModal}
               onClose={handleCloseModal}
@@ -206,20 +222,29 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
             <ExternalLink size={20} />
             <span>Visit Link</span>
           </button>
-          <div className="flex gap-2 mt-2">
+          {isEditable() ? (
+            <div className="flex gap-2 mt-2">
+              <button
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
+                onClick={handleEdit}
+              >
+                Edit
+              </button>
+              <button
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-red-600 text-white hover:bg-red-700 text-sm font-semibold"
+                onClick={handleDelete}
+              >
+                Delete
+              </button>
+            </div>
+          ) : (
             <button
-              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
-              onClick={handleEdit}
-            >
-              Edit
-            </button>
-            <button
-              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-red-600 text-white hover:bg-red-700 text-sm font-semibold"
+              className="w-full mt-2 px-3 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 transition text-sm font-semibold"
               onClick={handleDelete}
             >
               Delete
             </button>
-          </div>
+          )}
           <ConfirmationModal
             isOpen={showModal}
             onClose={handleCloseModal}
