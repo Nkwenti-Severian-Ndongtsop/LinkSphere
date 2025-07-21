@@ -3,6 +3,7 @@ import { LinkIcon, ExternalLink, User as UserIcon, Calendar, Clock } from 'lucid
 import { formatInTimeZone } from 'date-fns-tz';
 import ConfirmationModal from './ConfirmationModal';
 import SuccessModal from './SuccessModal';
+import { useNavigate } from 'react-router-dom';
 
 interface LinkPreview {
   title?: string;
@@ -39,6 +40,7 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
   const [faviconError, setFaviconError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const navigate = useNavigate();
 
   const isOwner = currentUser && link.user_id === currentUser.id;
   const hasImage = !!link.preview?.image && !imageError;
@@ -66,6 +68,11 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
   const handleVisit = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(link.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/dashboard/upload/${link.id}/edit`);
   };
 
   const formatDate = (dateString: string) => {
@@ -137,7 +144,7 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
             <div className="flex gap-2">
               <button
                 className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
-                // onClick={handleEdit} // Add edit logic later
+                onClick={handleEdit}
               >
                 Edit
               </button>
@@ -202,7 +209,7 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
           <div className="flex gap-2 mt-2">
             <button
               className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
-              // onClick={handleEdit} // Add edit logic later
+              onClick={handleEdit}
             >
               Edit
             </button>
