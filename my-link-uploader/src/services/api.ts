@@ -219,6 +219,34 @@ export const ApiService = {
       handleApiError(error as AxiosError<ApiError>);
     }
   },
+
+  async getLink(id: string): Promise<Link> {
+    try {
+      const response = await api.get<ApiResponse<Link>>(`/links/${id}`);
+      if (!response.data.success || !response.data.data) {
+        throw new Error(response.data.message || 'Failed to fetch link');
+      }
+      return response.data.data;
+    } catch (error) {
+      handleApiError(error as AxiosError<ApiError>);
+      throw error;
+    }
+  },
+
+  async updateLink(id: string, data: { url: string; title: string; description: string }): Promise<Link> {
+    try {
+      const response = await api.put<ApiResponse<Link>>(`/links/${id}`,
+        data
+      );
+      if (!response.data.success || !response.data.data) {
+        throw new Error(response.data.message || 'Failed to update link');
+      }
+      return response.data.data;
+    } catch (error) {
+      handleApiError(error as AxiosError<ApiError>);
+      throw error;
+    }
+  },
 };
 
 export default ApiService; 
