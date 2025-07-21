@@ -134,12 +134,20 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
               <ExternalLink size={20} />
               <span>Visit Link</span>
             </button>
-            <button
-              className="w-full px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm"
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
+                // onClick={handleEdit} // Add edit logic later
+              >
+                Edit
+              </button>
+              <button
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-red-600 text-white hover:bg-red-700 text-sm font-semibold"
+                onClick={handleDelete}
+              >
+                Delete
+              </button>
+            </div>
             <ConfirmationModal
               isOpen={showModal}
               onClose={handleCloseModal}
@@ -191,12 +199,20 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
             <ExternalLink size={20} />
             <span>Visit Link</span>
           </button>
-          <button
-            className="w-full mt-2 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition text-sm"
-            onClick={handleDelete}
-          >
-            Delete
-          </button>
+          <div className="flex gap-2 mt-2">
+            <button
+              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-orange-400 text-white hover:bg-orange-500 text-sm font-semibold"
+              // onClick={handleEdit} // Add edit logic later
+            >
+              Edit
+            </button>
+            <button
+              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 bg-red-600 text-white hover:bg-red-700 text-sm font-semibold"
+              onClick={handleDelete}
+            >
+              Delete
+            </button>
+          </div>
           <ConfirmationModal
             isOpen={showModal}
             onClose={handleCloseModal}
