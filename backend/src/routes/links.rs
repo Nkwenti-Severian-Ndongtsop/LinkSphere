@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 
-use crate::database::queries::{create_link, increment_click_count};
+use crate::database::queries::{create_link, increment_click_count, get_link_by_id};
 use crate::{
     api::{models::CreateLinkRequest, ApiResponse, ErrorResponse},
     database::{self, models::Link, PgPool},
@@ -277,6 +277,39 @@ pub async fn delete_link(
         Err(e) => {
             let error = ErrorResponse::new(format!("Failed to fetch link: {e}"))
                 .with_code("LINK_FETCH_ERROR");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
+}
+
+/// Get a single link by ID
+///
+/// Returns the link with the given ID, or 404 if not found
+#[utoipa::path(
+    get,
+    path = "/api/links/{id}",
+    responses(
+        (status = 200, description = "Link retrieved successfully", body = LinkResponse),
+        (status = 404, description = "Link not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    ),
+    tag = "links"
+)]
+pub async fn get_link_by_id_handler(
+    State(pool): State<PgPool>,
+    Path(link_id): Path<Uuid>,
+) -> impl IntoResponse {
+    match get_link_by_id(&pool, link_id).await {
+        Ok(Some(link)) => {
+            let response = ApiResponse::success(link);
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Ok(None) => {
+            let error = ErrorResponse::new("Link not found").with_code("NOT_FOUND");
+            (StatusCode::NOT_FOUND, Json(error)).into_response()
+        }
+        Err(e) => {
+            let error = ErrorResponse::new(format!("Failed to fetch link: {e}")).with_code("LINK_FETCH_ERROR");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
         }
     }
