@@ -10,7 +10,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "../../hooks/useTheme"
 import { useAuth } from "../../hooks/useAuth"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import ApiService from "../../services/api"
 
 interface FormData {
@@ -30,6 +30,7 @@ export default function UploadPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { isDark } = useTheme()
+  const { id } = useParams();
 
   // Redirect if not logged in
   useEffect(() => {
@@ -50,6 +51,25 @@ export default function UploadPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [isFormValid, setIsFormValid] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  // Fetch link data if in edit mode
+  useEffect(() => {
+    if (id) {
+      setIsEditMode(true);
+      ApiService.getLink(id)
+        .then(link => {
+          setFormData({
+            title: link.title,
+            url: link.url,
+            description: link.description
+          });
+        })
+        .catch(() => {
+          setErrors({ submit: 'Failed to load link for editing.' });
+        });
+    }
+  }, [id]);
 
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -169,21 +189,28 @@ export default function UploadPage() {
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://' + url;
       }
-
-      await ApiService.createLink({
-        url,
-        title: formData.title,
-        description: formData.description
-      });
-      
-      setSuccessMessage("Link shared successfully!");
-      setFormData({ title: "", url: "", description: "" });
+      if (isEditMode && id) {
+        await ApiService.updateLink(id, {
+          url,
+          title: formData.title,
+          description: formData.description
+        });
+        setSuccessMessage('Link updated successfully!');
+      } else {
+        await ApiService.createLink({
+          url,
+          title: formData.title,
+          description: formData.description
+        });
+        setSuccessMessage('Link shared successfully!');
+        setFormData({ title: '', url: '', description: '' });
+      }
     } catch (error) {
-      console.error('Error creating link:', error);
+      console.error('Error submitting link:', error);
       if (error instanceof Error) {
         setErrors({ submit: error.message });
       } else {
-        setErrors({ submit: "Failed to create link. Please try again." });
+        setErrors({ submit: 'Failed to submit link. Please try again.' });
       }
     } finally {
       setIsSubmitting(false);
@@ -244,7 +271,7 @@ export default function UploadPage() {
           className="text-center mb-12"
         >
           <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-            Share a Link
+            {isEditMode ? 'Edit Link' : 'Share a Link'}
           </h1>
           <motion.p
             className={`text-xl font-bold ${
@@ -388,7 +415,7 @@ export default function UploadPage() {
               `}
             >
               <LinkIcon size={20} />
-              {isSubmitting ? 'Sharing Link...' : 'Share Link'}
+              {isEditMode ? 'Update Link' : isSubmitting ? 'Sharing Link...' : 'Share Link'}
           </button>
 
             {/* Error Message */}
