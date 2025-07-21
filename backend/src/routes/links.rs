@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 
-use crate::database::queries::{create_link, increment_click_count, get_link_by_id};
+use crate::database::queries::{create_link, increment_click_count, get_link_by_id, update_link};
 use crate::{
     api::{models::CreateLinkRequest, ApiResponse, ErrorResponse},
     database::{self, models::Link, PgPool},
@@ -277,6 +277,66 @@ pub async fn delete_link(
         Err(e) => {
             let error = ErrorResponse::new(format!("Failed to fetch link: {e}"))
                 .with_code("LINK_FETCH_ERROR");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
+}
+
+/// Update a link by ID
+///
+/// Only the owner can update. Returns the updated link or error.
+#[utoipa::path(
+    put,
+    path = "/api/links/{id}",
+    request_body = CreateLinkRequest,
+    responses(
+        (status = 200, description = "Link updated successfully", body = LinkResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Link not found", body = ErrorResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    ),
+    tag = "links"
+)]
+pub async fn update_link_handler(
+    State(pool): State<PgPool>,
+    Extension(user): Extension<AuthUser>,
+    Path(link_id): Path<Uuid>,
+    Json(payload): Json<CreateLinkRequest>,
+) -> impl IntoResponse {
+    // Validate the request payload
+    if let Err(validation_errors) = payload.validate() {
+        let error = ErrorResponse::new(format!("Validation error: {validation_errors}")).with_code("VALIDATION_ERROR");
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+    }
+    // Check ownership
+    match get_link_by_id(&pool, link_id).await {
+        Ok(Some(link)) => {
+            if link.user_id != user.id {
+                let error = ErrorResponse::new("You don't have permission to update this link").with_code("FORBIDDEN");
+                return (StatusCode::FORBIDDEN, Json(error)).into_response();
+            }
+            // Update the link
+            match update_link(&pool, link_id, payload.url, payload.title, payload.description).await {
+                Ok(Some(updated_link)) => {
+                    let response = ApiResponse::success_with_message(updated_link, "Link updated successfully");
+                    (StatusCode::OK, Json(response)).into_response()
+                }
+                Ok(None) => {
+                    let error = ErrorResponse::new("Link not found").with_code("NOT_FOUND");
+                    (StatusCode::NOT_FOUND, Json(error)).into_response()
+                }
+                Err(e) => {
+                    let error = ErrorResponse::new(format!("Failed to update link: {e}")).with_code("LINK_UPDATE_ERROR");
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+                }
+            }
+        }
+        Ok(None) => {
+            let error = ErrorResponse::new("Link not found").with_code("NOT_FOUND");
+            (StatusCode::NOT_FOUND, Json(error)).into_response()
+        }
+        Err(e) => {
+            let error = ErrorResponse::new(format!("Failed to fetch link: {e}")).with_code("LINK_FETCH_ERROR");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
         }
     }
