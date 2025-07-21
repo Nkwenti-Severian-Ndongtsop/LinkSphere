@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LinkIcon, ExternalLink, User as UserIcon, Calendar, Clock } from 'lucide-react';
+import { LinkIcon, ExternalLink, User as UserIcon, Calendar, Clock, Pencil } from 'lucide-react';
 import { formatInTimeZone } from 'date-fns-tz';
 import ConfirmationModal from './ConfirmationModal';
 import SuccessModal from './SuccessModal';
@@ -40,6 +40,7 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
   const [faviconError, setFaviconError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const navigate = useNavigate();
 
   const isOwner = currentUser && link.user_id === currentUser.id;
@@ -79,7 +80,14 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setShowEditModal(true);
+  };
+  const handleConfirmEdit = () => {
+    setShowEditModal(false);
     navigate(`/dashboard/upload/${link.id}/edit`);
+  };
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
   };
 
   const formatDate = (dateString: string) => {
@@ -182,6 +190,12 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
               onClose={handleCloseSuccess}
               message="Link deleted successfully!"
             />
+            <EditConfirmationModal
+              isOpen={showEditModal}
+              onClose={handleCloseEditModal}
+              onConfirm={handleConfirmEdit}
+              message="Are you sure you want to edit this link?"
+            />
           </div>
         </div>
       </div>
@@ -256,6 +270,12 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
             onClose={handleCloseSuccess}
             message="Link deleted successfully!"
           />
+          <EditConfirmationModal
+            isOpen={showEditModal}
+            onClose={handleCloseEditModal}
+            onConfirm={handleConfirmEdit}
+            message="Are you sure you want to edit this link?"
+          />
         </div>
     </div>
   );
@@ -317,5 +337,26 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, currentUser, onDelete }) => {
     </div>
   );
 };
+
+function EditConfirmationModal({ isOpen, onClose, onConfirm, message }: { isOpen: boolean; onClose: () => void; onConfirm: () => void; message: string }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black bg-opacity-60 transition-opacity" onClick={onClose} />
+      <div className="relative z-10 bg-gray-900 rounded-xl shadow-2xl p-8 w-full max-w-md mx-auto flex flex-col items-center border border-gray-700">
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-16 h-16 flex items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-yellow-500 mb-4">
+            <Pencil size={36} className="text-white" />
+          </div>
+          <p className="text-lg text-gray-100 font-semibold text-center">{message}</p>
+        </div>
+        <div className="flex w-full justify-center gap-4 mt-4">
+          <button className="px-5 py-2 rounded-lg bg-gray-700 text-gray-200 hover:bg-gray-600 transition font-medium" onClick={onClose}>Cancel</button>
+          <button className="px-5 py-2 rounded-lg bg-gradient-to-r from-orange-400 to-yellow-500 text-white hover:from-orange-500 hover:to-yellow-400 transition font-semibold shadow" onClick={onConfirm}>Yes, Edit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default LinkCard; 
