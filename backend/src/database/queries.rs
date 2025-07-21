@@ -168,6 +168,66 @@ pub async fn get_link_by_id(pool: &PgPool, link_id: Uuid) -> Result<Option<Link>
     .await
 }
 
+/// Updates a link in the database
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `link_id` - The ID of the link to update
+/// * `url`, `title`, `description` - New values
+///
+/// # Returns
+/// * `Result<Option<Link>, sqlx::Error>` - The updated link if found, None if not found, or an error
+pub async fn update_link(
+    pool: &PgPool,
+    link_id: Uuid,
+    url: String,
+    title: String,
+    description: String,
+) -> Result<Option<Link>, sqlx::Error> {
+    let now = Utc::now();
+    // Update the link and get the updated row (without user info)
+    let updated = sqlx::query!(
+        r#"
+        UPDATE links
+        SET url = $2, title = $3, description = $4, updated_at = $5
+        WHERE id = $1
+        RETURNING id, url, title, description, user_id, click_count, created_at, updated_at, preview
+        "#,
+        link_id,
+        url,
+        title,
+        description,
+        now
+    )
+    .fetch_optional(pool)
+    .await?;
+    if let Some(row) = updated {
+        // Fetch user info
+        let user = sqlx::query!(
+            r#"SELECT username FROM users WHERE id = $1"#,
+            row.user_id
+        )
+        .fetch_optional(pool)
+        .await?
+        .map(|u| crate::database::models::SimpleUser { username: u.username });
+        let link = Link {
+            id: row.id,
+            url: row.url,
+            title: row.title.unwrap_or_default(),
+            description: row.description.unwrap_or_default(),
+            user_id: row.user_id,
+            click_count: row.click_count,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            preview: crate::database::models::JsonLinkPreview::from(row.preview).into(),
+            user,
+        };
+        Ok(Some(link))
+    } else {
+        Ok(None)
+    }
+}
+
 pub async fn check_user_exists(
     pool: &PgPool,
     email: &str,
