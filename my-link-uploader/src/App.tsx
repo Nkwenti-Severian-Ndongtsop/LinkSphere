@@ -23,6 +23,7 @@ function App() {
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/dashboard/upload" element={<UploadPage />} />
+              <Route path="/dashboard/upload/:id/edit" element={<UploadPage />} />
               <Route path="/dashboard/my-account" element={<MyAccountPage />} />
             </Routes>
           </Layout>
