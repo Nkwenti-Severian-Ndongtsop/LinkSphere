@@ -3,7 +3,7 @@ pub mod links;
 
 use crate::database::PgPool;
 use axum::{
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 
@@ -20,6 +20,7 @@ pub fn create_protected_router(pool: PgPool) -> Router {
         .route("/api/links", post(links::handle_create_link))
         .route("/api/links/{id}", delete(links::delete_link))
         .route("/api/links/{id}", get(links::get_link_by_id_handler))
+        .route("/api/links/{id}", put(links::update_link_handler))
         .route("/api/links/{id}/click", post(links::track_click))
         .with_state(pool)
 }
