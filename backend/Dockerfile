@@ -13,7 +13,7 @@ RUN useradd -m -U -s /bin/false app
 WORKDIR /app
 
 # Copy the pre-built binary from the host
-COPY package/backend /app/backend
+COPY backend/package/backend /app/backend
 
 # Copy migrations if needed
 COPY backend/migrations /app/migrations
