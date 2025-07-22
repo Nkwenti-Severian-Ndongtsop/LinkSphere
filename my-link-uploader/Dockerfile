@@ -2,7 +2,7 @@
 FROM nginx:alpine
 
 # Copy built assets from the host (assumes you have run the build already)
-COPY package/* /usr/share/nginx/html
+COPY frontend/package/* /usr/share/nginx/html
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
