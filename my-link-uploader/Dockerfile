@@ -2,7 +2,7 @@
 FROM nginx:alpine
 
 # Copy built assets from the host (assumes you have run the build already)
-COPY my-link-uploader/package/ /usr/share/nginx/html/
+COPY ./package/ /usr/share/nginx/html/
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
